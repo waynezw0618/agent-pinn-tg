@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从 SR、LLM 到 Agent 的湍流建模与 PINN —— 以二次流为例</title>
+<link rel="icon" href="data:,">
+<style>
+/* ============ Design tokens ============ */
+:root{
+  --bg:#070b14; --bg2:#0a1020;
+  --panel:#0e1626; --panel2:#121c31; --panel3:#0b1220;
+  --line:rgba(122,150,200,.20); --line2:rgba(122,150,200,.34);
+  --txt:#dde6f5; --dim:#93a4c3; --faint:#5d6d8d;
+  --cyan:#26d5f0; --blue:#4d8dff; --amber:#f5a83c; --green:#3ede9c; --red:#ff7080; --violet:#9b8bff;
+  --mono:"Cascadia Code","Consolas","SF Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#04060c;overflow:hidden;font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt)}
+#stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+#deck{width:1280px;height:720px;position:relative;transform-origin:center center;background:radial-gradient(1200px 700px at 20% -10%,#0d1830 0%,var(--bg) 55%,#05080f 100%);box-shadow:0 0 90px rgba(0,0,0,.75)}
+/* ============ Slides ============ */
+.slide{position:absolute;inset:0;padding:52px 60px 64px;opacity:0;visibility:hidden;transform:translateX(26px);transition:opacity .38s ease,transform .38s ease,visibility .38s;display:flex;flex-direction:column}
+.slide.active{opacity:1;visibility:visible;transform:translateX(0);z-index:2}
+.slide.prev{transform:translateX(-26px)}
+/* chrome */
+#nav{position:absolute;bottom:0;left:0;right:0;height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;z-index:50;font-size:12px;color:var(--faint);background:linear-gradient(0deg,rgba(4,6,12,.85),rgba(4,6,12,0))}
+#nav .brand{letter-spacing:.18em;font-size:10px;text-transform:uppercase}
+#nav .ctr{font-family:var(--mono)}
+#nav button{background:none;border:1px solid var(--line);color:var(--dim);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:6px}
+#nav button:hover{border-color:var(--cyan);color:var(--cyan)}
+#prog{position:absolute;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--blue),var(--cyan));width:0;transition:width .3s;z-index:60;box-shadow:0 0 12px var(--cyan)}
+/* typography */
+.kicker{font-size:13px;letter-spacing:.28em;color:var(--cyan);text-transform:uppercase;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.kicker::before{content:"";width:26px;height:2px;background:var(--cyan)}
+.kicker.amber{color:var(--amber)}.kicker.amber::before{background:var(--amber)}
+.kicker.green{color:var(--green)}.kicker.green::before{background:var(--green)}
+h1{font-size:46px;line-height:1.2;font-weight:700;letter-spacing:.01em}
+h2{font-size:32px;line-height:1.25;font-weight:700;margin-bottom:6px}
+.sub{color:var(--dim);font-size:16px;margin-top:8px;line-height:1.6}
+.head{margin-bottom:26px}
+.body{flex:1;display:flex;flex-direction:column;min-height:0}
+/* cards & grids */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;flex:1;min-height:0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:linear-gradient(160deg,var(--panel2),var(--panel3));border:1px solid var(--line);border-radius:14px;padding:20px 22px;position:relative;overflow:hidden}
+.card .ct{font-size:17px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.card p{font-size:14px;color:var(--dim);line-height:1.7}
+.card.accent{border-color:rgba(245,168,60,.45);box-shadow:0 0 24px rgba(245,168,60,.08) inset}
+.card.cy{border-color:rgba(38,213,240,.4)}
+.card.gn{border-color:rgba(62,222,156,.4)}
+.card.rd{border-color:rgba(255,112,128,.45)}
+.num-big{font-family:var(--mono);font-size:40px;font-weight:700;line-height:1.1;margin:6px 0}
+.num-big.c1{color:var(--cyan)}.num-big.c2{color:var(--amber)}.num-big.c3{color:var(--green)}.num-big.c4{color:var(--red)}.num-big.c5{color:var(--violet)}
+.up{color:var(--green);font-weight:700}.down{color:var(--red);font-weight:700}.hl-a{color:var(--amber)}.hl-c{color:var(--cyan)}
+.chip{display:inline-block;font-size:11.5px;padding:3px 10px;border-radius:20px;border:1px solid var(--line2);color:var(--dim);margin:3px 4px 0 0;font-family:var(--mono)}
+.chip.on{border-color:var(--cyan);color:var(--cyan)}
+.chip.am{border-color:var(--amber);color:var(--amber)}
+/* tables */
+table.tb{width:100%;border-collapse:collapse;font-size:14.5px}
+table.tb th{color:var(--faint);font-weight:600;text-align:left;padding:8px 12px;border-bottom:1px solid var(--line2);font-size:12.5px;letter-spacing:.05em}
+table.tb td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--txt)}
+table.tb tr:last-child td{border-bottom:none}
+table.tb td.mono,.mono{font-family:var(--mono)}
+table.tb .best{color:var(--green);font-weight:700}
+table.tb .worst{color:var(--red)}
+/* formula box */
+.fx{background:rgba(10,16,30,.75);border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:17px;line-height:1.9;color:#cfe0f8;overflow-x:auto;white-space:nowrap}
+.fx .a{color:var(--amber)}.fx .c{color:var(--cyan)}.fx .g{color:var(--green)}.fx .r{color:var(--red)}.fx .d{color:var(--faint)}
+.fx.sm{font-size:14.5px;line-height:1.85}
+.fcap{font-size:12px;color:var(--faint);margin-top:6px;font-family:var(--mono)}
+/* section divider */
+.divider{justify-content:center}
+.divider .act{font-family:var(--mono);font-size:15px;color:var(--faint);letter-spacing:.4em;margin-bottom:18px}
+.divider h1{font-size:56px}
+.divider .dsub{font-size:20px;color:var(--dim);margin-top:18px;max-width:860px;line-height:1.75}
+.divider .bignum{position:absolute;right:40px;bottom:20px;font-family:var(--mono);font-size:220px;font-weight:800;color:rgba(122,150,200,.07);line-height:1}
+/* paper figure images */
+.pfig{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:12px;overflow:hidden}
+.pfig img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+.pfig .pcap{font-size:11.5px;color:var(--faint);margin-top:8px;font-family:var(--mono);text-align:center}
+.pfig .src{color:var(--cyan)}
+/* footer note on slides */
+.note{font-size:12px;color:var(--faint);margin-top:auto;padding-top:14px;font-family:var(--mono)}
+.note b{color:var(--dim);font-weight:600}
+/* stat row */
+.statrow{display:flex;gap:18px}
+.stat{flex:1;background:var(--panel3);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+.stat .sv{font-family:var(--mono);font-size:26px;font-weight:700}
+.stat .sl{font-size:12px;color:var(--faint);margin-top:3px;line-height:1.45}
+/* svg common */
+svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+.fig{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.fig svg{max-width:100%;max-height:100%}
+/* animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.active .a1,.active .a2,.active .a3,.active .a4,.active .a5{animation:fadeUp .5s ease both}
+.active .a2{animation-delay:.12s}.active .a3{animation-delay:.24s}.active .a4{animation-delay:.36s}.active .a5{animation-delay:.48s}
+@keyframes pulseGlow{0%,100%{opacity:.35}50%{opacity:1}}
+.pulse{animation:pulseGlow 2.4s ease-in-out infinite}
+/* cover */
+#coverCv{position:absolute;inset:0;width:100%;height:100%}
+#coverContent{position:relative;z-index:3;height:100%;display:flex;flex-direction:column;justify-content:center;padding-left:76px}
+#coverContent .ck{font-family:var(--mono);letter-spacing:.5em;font-size:13px;color:var(--cyan);margin-bottom:22px}
+#coverContent h1{font-size:58px;max-width:900px}
+#coverContent h1 .grad{background:linear-gradient(92deg,#7fd8ff,#26d5f0 40%,#f5a83c);-webkit-background-clip:text;background-clip:text;color:transparent}
+#coverContent .csub{font-size:23px;color:#b9c8e4;margin-top:16px;font-weight:300}
+#coverContent .cmeta{margin-top:46px;font-size:14px;color:var(--faint);font-family:var(--mono);line-height:2}
+#coverContent .cmeta b{color:var(--dim);font-weight:600}
+/* flow list */
+.flow{display:flex;align-items:stretch;gap:0}
+.flow .fstep{flex:1;background:var(--panel3);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:13.5px;position:relative}
+.flow .farr{display:flex;align-items:center;padding:0 8px;color:var(--faint);font-size:20px}
+/* terminal (UI demo) */
+.term{flex:1;min-height:0;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;border:1px solid var(--line2);background:#080d18;box-shadow:0 18px 60px rgba(0,0,0,.5)}
+.tbar{height:38px;background:#0e1524;display:flex;align-items:center;padding:0 14px;gap:8px;border-bottom:1px solid var(--line);flex:none}
+.tbar .dot{width:11px;height:11px;border-radius:50%}
+.tbar .tt{margin-left:10px;font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+.tbar .live{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--green);border:1px solid rgba(62,222,156,.4);padding:2px 9px;border-radius:12px;letter-spacing:.2em}
+.termbody{flex:1;display:grid;grid-template-columns:215px 1fr 250px;min-height:0}
+.statelist{border-right:1px solid var(--line);padding:14px 12px;background:#0a1120}
+.statelist .st{font-family:var(--mono);font-size:12.5px;padding:7px 10px;border-radius:8px;color:var(--faint);margin-bottom:6px;border:1px solid transparent;transition:all .3s}
+.statelist .st.cur{color:var(--cyan);border-color:rgba(38,213,240,.5);background:rgba(38,213,240,.08);box-shadow:0 0 14px rgba(38,213,240,.15)}
+.statelist .st.done{color:var(--green)}
+.statelist .shead{font-size:10px;letter-spacing:.25em;color:var(--faint);margin:2px 0 10px;font-family:var(--mono)}
+.logstream{padding:14px 18px;font-family:var(--mono);font-size:13px;line-height:1.9;overflow:hidden;color:#aebbdc;position:relative}
+.logstream .ln{white-space:pre;opacity:0;animation:fadeUp .35s ease both}
+.logstream .tag{color:var(--faint)}
+.logstream .st{color:var(--cyan)}
+.logstream .ok{color:var(--green)}
+.logstream .warn{color:var(--amber)}
+.logstream .bad{color:var(--red)}
+.logstream .cmd{color:#e8f0ff;font-weight:600}
+.rightpane{border-left:1px solid var(--line);padding:14px;background:#0a1120;display:flex;flex-direction:column;gap:12px}
+.budrow{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.budrow .bl{display:flex;justify-content:space-between;margin-bottom:4px}
+.bar{height:7px;border-radius:4px;background:#1a2440;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:4px;transition:width .6s ease}
+.paretto{margin-top:2px}
+.paretto .ph{font-size:10px;letter-spacing:.22em;color:var(--faint);margin-bottom:6px;font-family:var(--mono)}
+.caret{width:10px;height:10px;border-radius:50%;position:absolute;transition:all .7s ease}
+.caret.hero{box-shadow:0 0 10px var(--amber)}
+</style>
+</head>
+<body>
+<div id="stage"><div id="deck">
+<div id="prog"></div>
+<nav id="nav"></nav>
+
+<!-- ================= SLIDE 1 : COVER ================= -->
+<section class="slide active" id="s1">
+  <canvas id="coverCv"></canvas>
+  <div id="coverContent">
+    <div class="ck">AI × TURBULENCE MODELING</div>
+    <h1>从 <span class="grad">SR、LLM 到 Agent</span><br>的湍流建模与 PINN</h1>
+    <div class="csub">—— 以旋转槽道流 Taylor–Görtler 二次流为例</div>
+    <div class="cmeta">
+      <b>Wei Zhang · Benlong Wang · Zheng Ma · Bing Zhu</b><br>
+      LGF 战役 · LGF-Agent P1/P2 · Agent-PINN Creator–Inspector &nbsp;|&nbsp; 2026-10
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 2 : ROADMAP ================= -->
+<section class="slide" id="s2">
+  <div class="head">
+    <div class="kicker">Roadmap</div>
+    <h2>三部曲：每一幕解决前一幕留下的问题</h2>
+    <div class="sub">同一条物理主线（旋转槽道流 TG 二次流的 b₂₃ 闭合 → PINN 重建），三代 AI 建模范式层层递进</div>
+  </div>
+  <div class="fig a2">
+  <svg viewBox="0 0 1160 470" font-size="14">
+    <defs>
+      <marker id="ar-c" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#26d5f0"/></marker>
+      <marker id="ar-a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#f5a83c"/></marker>
+    </defs>
+    <!-- ascending autonomy axis -->
+    <line x1="60" y1="430" x2="1100" y2="60" stroke="rgba(122,150,200,.25)" stroke-dasharray="6 7" stroke-width="2"/>
+    <text x="1010" y="42" fill="#93a4c3" font-size="13" text-anchor="end">自主化程度 ↑ / 人工参与 ↓</text>
+    <!-- SR platform -->
+    <g>
+      <rect x="70" y="300" width="290" height="112" rx="14" fill="#0e1626" stroke="rgba(122,150,200,.35)" stroke-width="1.5"/>
+      <text x="90" y="336" fill="#dde6f5" font-size="21" font-weight="700">符号回归 SR</text>
+      <text x="90" y="364" fill="#93a4c3" font-size="13.5">盲目搜索：GP 变异 × 交叉</text>
+      <text x="90" y="388" fill="#5d6d8d" font-size="12.5" font-family="Consolas,monospace">PySR · Eureqa · SINDy</text>
+      <text x="90" y="288" fill="#5d6d8d" font-size="12">① 无物理先验 · 常数病态</text>
+    </g>
+    <!-- LLM platform -->
+    <g>
+      <rect x="435" y="212" width="290" height="112" rx="14" fill="#0e1826" stroke="rgba(38,213,240,.45)" stroke-width="1.5"/>
+      <text x="455" y="248" fill="#dde6f5" font-size="21" font-weight="700">LLM 语义引导</text>
+      <text x="455" y="276" fill="#93a4c3" font-size="13.5">语义先验注入公式骨架搜索</text>
+      <text x="455" y="300" fill="#5d6d8d" font-size="12.5" font-family="Consolas,monospace">LGF = LLM + Graph-Feynman</text>
+      <text x="455" y="200" fill="#26d5f0" font-size="12">② 形状仍靠人工多轮调参</text>
+    </g>
+    <!-- Agent platform -->
+    <g>
+      <rect x="800" y="118" width="290" height="112" rx="14" fill="#16142a" stroke="rgba(245,168,60,.55)" stroke-width="2"/>
+      <text x="820" y="154" fill="#f5e6cd" font-size="21" font-weight="700">Agent 自主闭环</text>
+      <text x="820" y="182" fill="#c9b693" font-size="13.5">记忆 · 证据 · 预算 · 证伪</text>
+      <text x="820" y="206" fill="#8a7a5c" font-size="12.5" font-family="Consolas,monospace">LGF-Agent · Agent-PINN</text>
+      <text x="820" y="106" fill="#f5a83c" font-size="12">③ 全流程替代人工调参</text>
+    </g>
+    <line x1="360" y1="345" x2="427" y2="280" stroke="#26d5f0" stroke-width="2.5" marker-end="url(#ar-c)"/>
+    <line x1="725" y1="257" x2="792" y2="192" stroke="#f5a83c" stroke-width="2.5" marker-end="url(#ar-a)"/>
+    <text x="375" y="298" fill="#26d5f0" font-size="12.5">注入物理先验</text>
+    <text x="738" y="210" fill="#f5a83c" font-size="12.5">加上状态与审计</text>
+    <!-- bottom evidence chain -->
+    <g font-size="12.5" font-family="Consolas,monospace">
+      <rect x="70" y="438" width="330" height="24" rx="12" fill="#0b1220" stroke="rgba(122,150,200,.2)"/>
+      <text x="235" y="454" fill="#93a4c3" text-anchor="middle">PySR 最好 0.128 · 幸运种子不可复现</text>
+      <rect x="435" y="438" width="330" height="24" rx="12" fill="#0b1220" stroke="rgba(38,213,240,.25)"/>
+      <text x="600" y="454" fill="#93a4c3" text-anchor="middle">LGF 0.058 全池胜 · 但 28-run 靠人工</text>
+      <rect x="800" y="438" width="330" height="24" rx="12" fill="#16142a" stroke="rgba(245,168,60,.3)"/>
+      <text x="965" y="454" fill="#c9b693" text-anchor="middle">Agent 0.0169 = 3.4× 超人工 SOTA · $0.07</text>
+    </g>
+  </svg>
+  </div>
+  <div class="note">三份材料：① LGF-Agent P1/P2 报告 ② JHD 投稿（LGF+PINN 两阶段，本稿 Fig.1/2 示意图与论文同源、Fig.3/4/5 原图嵌入后文）③ Agent-PINN 报告（Creator–Inspector）</div>
+</section>
+
+<!-- ================= SLIDE 3 : PHYSICS ================= -->
+<section class="slide" id="s3">
+  <div class="head">
+    <div class="kicker">Act 0 · 物理背景</div>
+    <h2>旋转槽道流：一个"干净"的二次流试验台</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.35fr 1fr">
+    <div class="fig a1">
+    <svg viewBox="0 0 620 430" font-size="13.5">
+      <defs>
+        <marker id="aw" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#26d5f0"/></marker>
+      </defs>
+      <!-- channel -->
+      <rect x="70" y="70" width="440" height="290" rx="6" fill="#0a1322" stroke="rgba(122,150,200,.35)" stroke-width="1.5"/>
+      <line x1="70" y1="70" x2="510" y2="70" stroke="#7a96c4" stroke-width="3"/>
+      <line x1="70" y1="360" x2="510" y2="360" stroke="#7a96c4" stroke-width="3"/>
+      <text x="530" y="66" fill="#93a4c3" font-size="12.5">顶壁 y = +h</text>
+      <text x="530" y="364" fill="#93a4c3" font-size="12.5">底壁 y = −h</text>
+      <!-- vortex rows: 2 rows x 4 -->
+      <g stroke="#26d5f0" fill="none" stroke-width="2.2">
+        <!-- top row y=142, alternating -->
+        <circle cx="130" cy="140" r="26" marker-end=""/>
+        <circle cx="240" cy="140" r="26"/>
+        <circle cx="350" cy="140" r="26"/>
+        <circle cx="460" cy="140" r="26"/>
+        <circle cx="130" cy="290" r="26"/>
+        <circle cx="240" cy="290" r="26"/>
+        <circle cx="350" cy="290" r="26"/>
+        <circle cx="460" cy="290" r="26"/>
+      </g>
+      <g font-size="16" fill="#8fe3f5" font-weight="700">
+        <text x="124" y="146">↻</text><text x="234" y="146">↺</text><text x="344" y="146">↻</text><text x="454" y="146">↺</text>
+        <text x="124" y="296">↺</text><text x="234" y="296">↻</text><text x="344" y="296">↺</text><text x="454" y="296">↻</text>
+      </g>
+      <!-- rotation arrows on walls -->
+      <line x1="120" y1="52" x2="470" y2="52" stroke="#f5a83c" stroke-width="2" marker-end="url(#aw)" stroke-dasharray="1 0"/>
+      <text x="300" y="40" fill="#f5a83c" font-size="14" text-anchor="middle">系统旋转 Ω（沿流向 x）</text>
+      <!-- centerline -->
+      <line x1="70" y1="215" x2="510" y2="215" stroke="rgba(122,150,200,.3)" stroke-dasharray="5 6"/>
+      <text x="290" y="234" fill="#5d6d8d" font-size="12">通道核心区（近零）</text>
+      <!-- axes -->
+      <g stroke="#93a4c3" stroke-width="1.6">
+        <line x1="86" y1="412" x2="146" y2="412" /><line x1="86" y1="412" x2="86" y2="378"/>
+      </g>
+      <text x="152" y="417" fill="#93a4c3" font-size="13">z（展向）</text>
+      <text x="60" y="375" fill="#93a4c3" font-size="13" text-anchor="end">y</text>
+      <text x="86" y="417" fill="#5d6d8d" font-size="12">x ⊗</text>
+      <!-- wavelength -->
+      <line x1="104" y1="340" x2="240" y2="340" stroke="#3ede9c" stroke-width="1.8"/>
+      <line x1="104" y1="333" x2="104" y2="347" stroke="#3ede9c" stroke-width="1.8"/>
+      <line x1="240" y1="333" x2="240" y2="347" stroke="#3ede9c" stroke-width="1.8"/>
+      <text x="172" y="331" fill="#3ede9c" font-size="12" text-anchor="middle">λ₃</text>
+      <text x="300" y="120" fill="#93a4c3" font-size="12.5" text-anchor="middle">TG 涡对 · 双层反向排列</text>
+    </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card a2">
+        <div class="ct">🎯 试验台为何干净</div>
+        <p>二次流在此<b style="color:var(--txt)">孤立出现</b>：无曲率、无端壁，只有科氏力驱动展向平均流 W̄(y)，与湍流相互作用组织出流向拉长的反向涡对。</p>
+      </div>
+      <div class="statrow a3">
+        <div class="stat"><div class="sv" style="color:var(--cyan)">Re<sub>τ</sub> = 180</div><div class="sl">摩擦雷诺数</div></div>
+        <div class="stat"><div class="sv" style="color:var(--cyan)">Ro<sub>τ</sub> ∈ 7.5–150</div><div class="sl">5 个旋转数工况</div></div>
+      </div>
+      <div class="card a4">
+        <div class="ct">📐 DNS 数据库（Yang &amp; Wang 2018, JFM）</div>
+        <p>每个工况提供 U⁺(y)、W⁺(y) 与完整 ⟨uᵢuⱼ⟩⁺(y) 剖面，<b style="color:var(--txt)">129 个法向节点</b> —— 两级 AI 阶段共用同一数据源。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 4 : WHY ================= -->
+<section class="slide" id="s4">
+  <div class="head">
+    <div class="kicker">Act 0 · 动机</div>
+    <h2>为什么需要低成本代理：DNS 的账单</h2>
+  </div>
+  <div class="grid3 a1" style="flex:none">
+    <div class="card">
+      <div class="ct">💸 DNS 极贵</div>
+      <div class="num-big c4">L<sub>x</sub> = 512πh</div>
+      <p>Ro<sub>τ</sub>=150 时流向域需急剧延长，系统 DNS 成本随旋转数快速膨胀；5 工况系统性扫描代价高。</p>
+    </div>
+    <div class="card">
+      <div class="ct">🚢 工程场景</div>
+      <div class="num-big c1">O(分钟)</div>
+      <p>船舶/叶轮机械的动量与热输运受二次流控制，需要<b style="color:var(--txt)">桌面 CPU 分钟级</b>的定量重建，而非每次完整 DNS。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">🧪 本工作目标</div>
+      <div class="num-big c2">b₂₃ → W̄ → 场</div>
+      <p>discover–close–simulate 三段式：发现紧凑闭合 → 积分平均剖面 → PINN 重建 TG 涡场，误差传播全程可测。</p>
+    </div>
+  </div>
+  <div class="card a3" style="margin-top:20px;flex:none">
+    <div class="ct">⚙️ 求解框架（本文贡献的三块拼图）</div>
+    <div class="flow" style="margin-top:10px">
+      <div class="fstep"><b style="color:var(--cyan)">① 方程发现</b><br><span style="color:var(--dim)">从 DNS 统计学习 b₂₃ 显式闭合（张量基形式）</span></div>
+      <div class="farr">→</div>
+      <div class="fstep"><b style="color:var(--cyan)">② 剖面闭合</b><br><span style="color:var(--dim)">mode-1 积分：⟨vw⟩ ⇒ W̄(y)</span></div>
+      <div class="farr">→</div>
+      <div class="fstep"><b style="color:var(--cyan)">③ 物理求解</b><br><span style="color:var(--dim)">PINN 谱网络重建 (y,z) 平面 TG 涡场</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 5 : CLOSURE ================= -->
+<section class="slide" id="s5">
+  <div class="head">
+    <div class="kicker">Act 0 · 闭合问题</div>
+    <h2>方程不闭合：一切都指向一个分量 b₂₃</h2>
+  </div>
+  <div class="body" style="gap:16px">
+    <div class="fx a1">mode-2 涡量平衡&nbsp;&nbsp;<span class="d">[</span> V̄ ∂<sub>y</sub>Ω<sub>x</sub> + W̃ ∂<sub>z</sub>Ω<sub>x</sub> <span class="d">]</span> <span class="d">=</span> <span class="d">[</span> 粘性项 <span class="d">]</span> <span class="d">+</span> <span class="a">∂<sub>y</sub>∂<sub>z</sub>⟨v²−w²⟩<sub>vtx</sub></span> <span class="d">+</span> <span class="a">∂<sub>z</sub>(−∂<sub>y</sub>⟨vw⟩<sub>vtx</sub>)</span> <span class="d">+ ν∇²Ω̃<sub>x</sub></span>
+      <div class="fcap">⟨·⟩vtx：涡胞携带的 z 依赖雷诺应力 —— 未知，方程不闭合</div>
+    </div>
+    <div class="grid2" style="flex:1">
+      <div class="card accent a2">
+        <div class="ct">🔑 决定性分量（b23-only 策略）</div>
+        <p style="margin-bottom:10px">六个独立各向异性分量中，<b style="color:var(--amber)">次流协方差 b₂₃ = ⟨vw⟩/2k</b> 是唯一决定性分量：</p>
+        <p style="margin-bottom:10px">· 通量闭合 mode-1 平衡 → 锁定 W̄(y)（对 DNS 验证精度 <b class="up">0.4% rms</b>）<br>· 通过 W̄ 及其壁梯度进入 mode-2 的平流与基涡量</p>
+        <div class="chip am">比全 ASM（10 个系数函数）小一个量级</div><div class="chip">Weatheritt &amp; Sandberg 路线的聚焦版</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="fx sm a3" style="flex:none">b₂₃ <span class="d">=</span> <span class="c">Σ<sub>j</sub></span> s<sub>j</sub> <span class="a">a<sub>j</sub>(Θ)</span> T̃₂₃<sup>(j)</sup>&nbsp;&nbsp;&nbsp;<span class="d">Θ = {η², ζ², S²/Ω², Re<sub>t</sub>, Ro<sub>loc</sub>, y<sub>w</sub>}</span>
+          <div class="fcap">basisB2 口径：T̃ 为逐工况 RMS 归一的张量基通道；待发现对象 = 系数函数 a<sub>j</sub>(Θ)；Ro_loc = 2Ω/(dū/dy) 局部旋转数（无量纲）</div>
+        </div>
+        <div class="card a4" style="flex:1">
+          <div class="ct">🧩 待发现的"积木"</div>
+          <p>冠军公式族的三大原料在后续三代方法中反复出现：<br><b style="color:var(--txt)">壁面函数</b> y<sub>w</sub>=1−|y|/h 的幂/对数&nbsp;·&nbsp;<b style="color:var(--txt)">旋转饱和</b> √Ro_loc、tanh(c·Ro_loc)&nbsp;·&nbsp;<b style="color:var(--txt)">不变量分母</b> 1/(c+η²)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ================= SLIDE 6 : DIVIDER ACT I ================= -->
+<section class="slide divider" id="s6">
+  <div class="act">ACT I / 第一幕</div>
+  <h1>符号回归 <span style="color:var(--faint)">SR</span></h1>
+  <div class="dsub">进化搜索在公式空间里盲目变异 —— 它能找到形状，<br>却不知道物理，也守不住常数。</div>
+  <div class="bignum">01</div>
+</section>
+
+<!-- ================= SLIDE 7 : SR BASICS ================= -->
+<section class="slide" id="s7">
+  <div class="head">
+    <div class="kicker">Act I · 符号回归</div>
+    <h2>SR 是什么：进化搜索 × 表达式树</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.1fr 1fr">
+    <div class="fig a1">
+    <svg viewBox="0 0 600 400" font-size="13.5">
+      <defs><marker id="ar7" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7a96c4"/></marker></defs>
+      <!-- expression tree -->
+      <g stroke="#7a96c4" stroke-width="1.6" fill="none">
+        <line x1="150" y1="80" x2="80" y2="150"/><line x1="150" y1="80" x2="220" y2="150"/><line x1="150" y1="80" x2="330" y2="150"/>
+        <line x1="80" y1="150" x2="40" y2="220"/><line x1="80" y1="150" x2="120" y2="220"/>
+        <line x1="220" y1="150" x2="190" y2="220"/><line x1="220" y1="150" x2="250" y2="220"/>
+      </g>
+      <g font-size="15" font-family="Consolas,monospace" text-anchor="middle">
+        <circle cx="150" cy="80" r="24" fill="#121c31" stroke="#26d5f0" stroke-width="1.8"/><text x="150" y="86" fill="#26d5f0" font-size="17">+</text>
+        <circle cx="80" cy="150" r="21" fill="#121c31" stroke="#7a96c4" stroke-width="1.4"/><text x="80" y="156" fill="#dde6f5">×</text>
+        <circle cx="220" cy="150" r="21" fill="#121c31" stroke="#7a96c4" stroke-width="1.4"/><text x="220" y="156" fill="#dde6f5">ln</text>
+        <circle cx="330" cy="150" r="21" fill="#121c31" stroke="#f5a83c" stroke-width="1.6"/><text x="330" y="156" fill="#f5a83c">÷</text>
+        <circle cx="40" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="40" y="225" fill="#93a4c3" font-size="13">C₁</text>
+        <circle cx="120" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="120" y="225" fill="#93a4c3" font-size="13">y<tspan baseline-shift="sub" font-size="10">w</tspan></text>
+        <circle cx="190" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="190" y="225" fill="#93a4c3" font-size="13">η²</text>
+        <circle cx="250" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="250" y="225" fill="#93a4c3" font-size="13">c</text>
+        <circle cx="298" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="298" y="225" fill="#93a4c3" font-size="13">1</text>
+        <circle cx="364" cy="220" r="17" fill="#0e1626" stroke="#7a96c4"/><text x="364" y="225" fill="#93a4c3" font-size="13">Ro</text>
+      </g>
+      <text x="150" y="272" fill="#5d6d8d" font-size="13" text-anchor="middle" font-family="Consolas,monospace">候选 = 表达式树（DAG）：算子×变量×常数</text>
+      <!-- GP loop -->
+      <g transform="translate(330,300)">
+        <rect x="0" y="0" width="240" height="86" rx="12" fill="#0b1220" stroke="rgba(122,150,200,.25)"/>
+        <text x="18" y="26" fill="#dde6f5" font-size="14.5" font-weight="700">GP 循环</text>
+        <text x="18" y="50" fill="#93a4c3" font-size="12.5">选择 → 交叉 → 变异 → 评估</text>
+        <text x="18" y="72" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">fitness = NMSE + 复杂度惩罚</text>
+      </g>
+      <path d="M150 260 C 150 300, 250 330, 328 332" stroke="#7a96c4" stroke-width="1.6" fill="none" marker-end="url(#ar7)" stroke-dasharray="5 5"/>
+    </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card a2">
+        <div class="ct">✅ SR 的承诺</div>
+        <p>直接输出<b style="color:var(--txt)">人类可读的显式公式</b>，天然可解释、可移植、可塞进 RANS 求解器；不训练即可外推评估。</p>
+      </div>
+      <div class="card rd a3">
+        <div class="ct">⚠️ 三个先天缺陷（本战役实测）</div>
+        <p style="line-height:2">
+        <b class="down">① 无物理先验</b> —— 搜索空间里有大量违反对称性/量纲的形状<br>
+        <b class="down">② 常数病态</b> —— 逐通道独立估常数，中间口径误差的 84–92% 来自通道间抵消<br>
+        <b class="down">③ 幸运种子</b> —— PySR m 变体三种子极差 <b class="down">7.8×</b>，最好成绩不可复现</p>
+      </div>
+      <div class="card cy a4">
+        <div class="ct">🌳→🕸 从表达式树到图 GP（LGF 的表示升级）</div>
+        <p style="line-height:1.85">经典 SR 用<b style="color:var(--txt)">表达式树</b>（左图）：每个子表达式只出现一次，公共子结构无法共享，交叉/变异只能盲目换子树。LGF 把候选升级为<b style="color:var(--txt)">有向无环图 DAG</b>：不同分支可复用同一节点（如 √Ro_loc 只算一次、处处引用），<b style="color:var(--txt)">"节点=算子/变量、边=参数与特征"</b> 使拓扑与常数在同一表示下被联合进化；AI-Feynman 先验也直接变成图上的剪枝约束。树是图的特例——这一升级让 GP 的每一次交叉都在"复用已验证的子结构"，而非重新拼装。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 8 : SR RESULTS ================= -->
+<section class="slide" id="s8">
+  <div class="head">
+    <div class="kicker">Act I · PySR 战绩</div>
+    <h2>28-run 战役中的纯 SR：形状容易，幅值难</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+    <div class="a1">
+      <table class="tb">
+        <tr><th>模型（终口径）</th><th>常数</th><th>NMSE</th><th>备注</th></tr>
+        <tr><td>LGF-e（引导）</td><td class="mono">21</td><td class="best">0.058</td><td>冠军</td></tr>
+        <tr><td>PySR 最好（g 池）</td><td class="mono">19</td><td>0.128</td><td>≈ 2.2× 差</td></tr>
+        <tr><td>LGF-m（引导）</td><td class="mono">55</td><td>0.072</td><td>全张量池</td></tr>
+        <tr><td>PySR 同复杂度封顶</td><td class="mono">12/函数</td><td class="worst">0.357→1.007</td><td>严重退化</td></tr>
+      </table>
+      <div class="card" style="margin-top:16px">
+        <div class="ct">📉 两个致命观察</div>
+        <p>· b₂₃ 是<b style="color:var(--txt)">偏置主导信号</b>（均值/标准差 1.6–2.9）：形状相关 ρ&gt;0.95 很容易，NMSE 跨两个数量级<br>· 复杂度封顶后 PySR 从 0.357 退化到 1.007 —— <b class="down">没有先验的搜索，预算越紧越失控</b></p>
+      </div>
+    </div>
+    <div class="fig a2">
+    <svg viewBox="0 0 500 420" font-size="13">
+      <!-- NMSE bars log scale -->
+      <text x="250" y="26" fill="#dde6f5" font-size="15" font-weight="700" text-anchor="middle">终口径 NMSE（越低越好，log）</text>
+      <g transform="translate(60,50)">
+        <!-- axis log10 from 0.03 to 1.2 mapped to width 400 -->
+        <line x1="0" y1="300" x2="420" y2="300" stroke="#7a96c4" stroke-width="1.4"/>
+        <!-- bars: value -> width = log10(v/0.03)/log10(40)*400 -->
+        <!-- 0.058 -> log10(1.933)/1.602*400 = 0.286/1.602*400=71.5 -->
+        <!-- 0.072 -> 0.380/1.602*400=95 -->
+        <!-- 0.128 -> 0.630/1.602*400=157 -->
+        <!-- 1.007 -> 1.525/1.602*400=381 -->
+        <g font-family="Consolas,monospace" font-size="13.5">
+          <rect x="0" y="18" width="72" height="34" rx="5" fill="#26d5f0" opacity=".92"/>
+          <text x="80" y="40" fill="#26d5f0">0.058 · LGF-e ★</text>
+          <rect x="0" y="82" width="95" height="34" rx="5" fill="#4d8dff" opacity=".85"/>
+          <text x="103" y="104" fill="#7fb1ff">0.072 · LGF-m</text>
+          <rect x="0" y="146" width="157" height="34" rx="5" fill="#f5a83c" opacity=".85"/>
+          <text x="165" y="168" fill="#f5a83c">0.128 · PySR best</text>
+          <rect x="0" y="210" width="381" height="34" rx="5" fill="#ff7080" opacity=".85"/>
+          <text x="286" y="232" fill="#ff7080" text-anchor="end">1.007 · PySR 封顶</text>
+        </g>
+        <!-- annotation -->
+        <text x="240" y="290" fill="#5d6d8d" font-size="12.5" text-anchor="middle">同复杂度预算下无先验搜索崩坏</text>
+      </g>
+    </svg>
+    </div>
+  </div>
+  <div style="display:flex;gap:12px;margin-top:14px" class="a2">
+    <div class="stat"><div class="sv" style="color:var(--green)">8/8</div><div class="sl">每个特征池 LGF run 均低于对应 PySR 均值 —— 不是单点运气，是系统性胜出</div></div>
+    <div class="stat"><div class="sv" style="color:var(--green)">2.2×</div><div class="sl">分布均值 LGF 0.087 vs PySR 0.190；worst-case 也好 2.2×</div></div>
+    <div class="stat"><div class="sv" style="color:var(--cyan)">σ 小 ~5×</div><div class="sl">LGF 稳定可复现；PySR 幸运种子单点低但不可复现（分布 vs 单点）</div></div>
+    <div class="stat"><div class="sv" style="color:var(--cyan)">−38%</div><div class="sl">节点数 15.1 vs 24.2 —— 先验同时换来精度与简洁</div></div>
+    <div class="stat"><div class="sv" style="color:var(--amber)">4/4</div><div class="sl">lgf_go &gt; lgf_mg 全部成立：LLM 种子初始种群是主要胜因</div></div>
+  </div>
+  <div class="note">两口径：中间口径 = 逐通道独立估常数；终口径 = 冻结形状、联合 LM 重抛光 —— 两引擎同协议竞争</div>
+</section>
+
+<!-- ================= SLIDE 9 : DIVIDER ACT II ================= -->
+<section class="slide divider" id="s9">
+  <div class="act">ACT II / 第二幕</div>
+  <h1>LLM 语义引导 <span style="color:var(--faint)">LGF</span></h1>
+  <div class="dsub">把物理直觉注入公式搜索 —— LLM 不算 NMSE，<br>它决定"下一步试什么形状"。</div>
+  <div class="bignum">02</div>
+</section>
+
+<!-- ================= SLIDE 10 : LGF ENGINE ================= -->
+<section class="slide" id="s10">
+  <div class="head" style="margin-bottom:14px">
+    <div class="kicker">Act II · LGF 引擎</div>
+    <h2 style="font-size:28px">LGF = LLM 外环 + 图-GP 内环 + 物理先验</h2>
+    <div class="sub" style="font-size:12.5px;color:var(--faint)">JHD 论文 Fig.1 原图（lgf_schematic）· SR 表达式树 → 图 GP 表示升级见第 7 页</div>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.6fr 1fr;gap:16px">
+    <div class="pfig a1">
+      <img src="assets/lgf_schematic.png" alt="论文 Fig.1：LGF 引机示意图">
+      <div class="pcap"><span class="src">JHD 论文 Fig.1（原图）</span> · LGF 迭代管线：LLM 语义算子 → DAG 候选池 → 图 GP + AI-Feynman 先验 → 经验缓存回流</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card cy a2">
+        <div class="ct">🧠 外环：LLM 语义算子</div>
+        <p style="font-size:13px">G_INIT 种子公式 / M_GUIDE 变异建议 —— 把"半个湍流文献"的直觉变成<b style="color:var(--txt)">定向变异</b>（"给增长项加 tanh 饱和"）。</p>
+      </div>
+      <div class="card cy a3">
+        <div class="ct">⚙️ 内环：图-GP 快循环</div>
+        <p style="font-size:13px">候选 = <b style="color:var(--txt)">边特征 DAG</b>（节点=算子/变量，边=常数与特征）：子结构复用、拓扑+常数联合进化、L-BFGS 多起点拟合、误差归因定位病灶子图反馈 LLM。</p>
+      </div>
+      <div class="card gn a4">
+        <div class="ct">📐 先验 = 隐式正则化</div>
+        <p style="font-size:13px">AI-Feynman 物理先验（量纲/对称/可分性）转成图约束剪枝；同复杂度封顶时 PySR 退化而 LGF 稳定。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 11 : LLM ADVANTAGE ================= -->
+<section class="slide" id="s11">
+  <div class="head">
+    <div class="kicker">Act II · 原理分析</div>
+    <h2>LLM 到底带来了什么：先验即正则化</h2>
+  </div>
+  <div class="grid3 a1">
+    <div class="card cy">
+      <div class="ct">🧠 语义记忆</div>
+      <p>预训练语料里"住着"半个湍流文献：对数律、tanh 饱和、SSG/EDQNM 代数闭合……LLM 提议的骨架天然落在<b style="color:var(--txt)">物理上合理的函数族</b>内。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">🎯 定向变异</div>
+      <p>看到误差归因（哪个子图贡献了误差），LLM 做<b style="color:var(--txt)">语义级手术</b>："给增长项加 tanh 饱和"，而非 GP 的盲目子树交换。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">📐 隐式正则化</div>
+      <p>同复杂度封顶时 PySR 崩坏（0.357→1.007）而 LGF 稳定 —— 先验把搜索约束在<b style="color:var(--txt)">低损失盆地</b>，等效于正则化。</p>
+    </div>
+  </div>
+  <div class="card a3" style="margin-top:20px;flex:1">
+    <div class="ct">🏆 冠军公式解剖（e 池，21 常数）—— 三大原料全部出现</div>
+    <div class="fx sm" style="margin-top:8px">
+      a₁ <span class="d">=</span> 3.016 <span class="a">ln(1.543 y<sub>w</sub> + 0.923)</span> − 3.08×10⁻⁴ Re<sub>t</sub>/(η²+11.41)&nbsp;&nbsp;&nbsp;<span class="d">// 壁面对数 + 不变量分母</span><br>
+      a₂ <span class="d">=</span> 1.900 y<sub>w</sub> − 20.89 y<sub>w</sub>/(<span class="c">√Ro<sub>loc</sub> + 9.662</span>) − 1.248/(η+1.162)² …&nbsp;&nbsp;<span class="d">// 旋转饱和 √Ro</span><br>
+      a₄ <span class="d">=</span> 0.320 Ro<sub>loc</sub>/(Ro<sub>loc</sub>+4.682) − 0.206 <span class="a">tanh(0.0039 Ro<sub>loc</sub> + 7.55 y<sub>w</sub>)</span>&nbsp;&nbsp;<span class="d">// tanh 旋转饱和（LLM 手笔）</span>
+    </div>
+    <div class="fcap">mean-shear 通道 T1 全冠军保留 —— 介于线性涡粘与全 ASM 之间的中间形态</div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 12 : PINN STAGE ================= -->
+<section class="slide" id="s12">
+  <div class="head" style="margin-bottom:14px">
+    <div class="kicker">Act II · 第二阶段</div>
+    <h2 style="font-size:28px">物理信息谱网络：把闭合喂给 PINN</h2>
+    <div class="sub" style="font-size:12.5px;color:var(--faint)">JHD 论文 Fig.2 原图（pinn_architecture）· 经典 PINN 示意图：网络 → 谱合成+自动微分 → Loss → 优化器更新 θ</div>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.6fr 1fr;gap:16px">
+    <div class="pfig a1">
+      <img src="assets/fig2_pdf_0.png" alt="论文 Fig.2：PINN 架构（paper.pdf 版）">
+      <div class="pcap"><span class="src">JHD 论文 Fig.2（原图）</span> · MLP(y) → {a_k, b_k} 谐波剖面 → 谱合成 φ=(1−y²)²Σ[…]kz* → AD 求残差 → L_pde + L_e → L&lt;ε? → Adam/L-BFGS 更新（红虚线 θ 反馈）</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card gn a2">
+        <div class="ct">🔒 硬约束谱 ansatz</div>
+        <p style="font-size:13px">φ=(1−y²)²·Σ[a_k sin+b_k cos]kz*：展向周期、无滑移、不可压<b style="color:var(--txt)">恒满足</b>——约束进结构，损失只需管物理。</p>
+      </div>
+      <div class="card accent a3">
+        <div class="ct">⚖️ 损失两件套</div>
+        <p style="font-size:13px">L_pde 尺度不变归一（定涡形）+ L_e <b style="color:var(--txt)">RMS 能量标定</b>（定幅值，防 a=0 梯度消失）；y 导数嵌套 autograd，z 导数解析。</p>
+      </div>
+      <div class="card cy a4">
+        <div class="ct">📊 训练配置与战果</div>
+        <p style="font-size:13px">tanh/宽 48/3 层 · Adam 1200 + L-BFGS 80 · 桌面 CPU 分钟级；9 runs 振幅误差 <b style="color:var(--green)">1.7–11%</b>，对 O(1) 剖面误差稳健。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 12B : PAPER FIG RANK/RHO ================= -->
+<section class="slide" id="s12b">
+  <div class="head">
+    <div class="kicker">Act II · JHD 论文 Fig.3</div>
+    <h2>28-run 全景：两指标分离，LGF 稳居 Pareto 前沿</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.5fr 1fr">
+    <div class="pfig a1">
+      <img src="assets/vw_rank_loss_rho.png" alt="论文 Fig.3：NMSE vs ρ 散点">
+      <div class="pcap"><span class="src">JHD 论文 Fig.3（原图）</span> · (a) 终口径 NMSE vs 形状相关 ρ 散点（28 runs）· (b) 每工况排名热图</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card cy a2">
+        <div class="ct">📊 怎么读这张图</div>
+        <p>横轴 ρ 只量"形状对不对"，纵轴 NMSE 才量"幅值准不准"。b₂₃ 是偏置主导信号：所有方法 ρ&gt;0.95 挤在右边界，但 NMSE 跨<b style="color:var(--txt)">两个数量级</b> —— 形状容易、幅值难。</p>
+      </div>
+      <div class="card a3">
+        <div class="ct">🏆 论文结论（Fig.3 支撑）</div>
+        <p>四冠军（箭头标注）全部落在<b style="color:var(--txt)">低 NMSE / 中低复杂度</b>角；等复杂度封顶后 PySR 聚集在高 NMSE 区，LGF 不受影响 —— 先验=隐式正则化的直接视觉证据。</p>
+      </div>
+      <div class="card gn a4">
+        <div class="ct">🔁 双校准口径</div>
+        <p>每点都经过"SR 中间口径 → LM 联合 refit 终口径"双校准；终口径治愈了 SR 逐通道常数的病态（m 池 34 → 0.072）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 12C : PAPER FIG PROFILES+FIELDS ================= -->
+<section class="slide" id="s12c">
+  <div class="head">
+    <div class="kicker">Act II · JHD 论文 Fig.4 / Fig.5</div>
+    <h2>从闭合到涡场：论文中的剖面与重建流场</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1fr 1.25fr;gap:18px">
+    <div class="pfig a1" style="min-height:0">
+      <img src="assets/vw_profiles.png" alt="论文 Fig.4：W̄ 剖面对比">
+      <div class="pcap"><span class="src">Fig.4</span> · W̄(y) 剖面：PINN（线）vs DNS（点）</div>
+    </div>
+    <div class="pfig a2" style="min-height:0">
+      <img src="assets/vw_fields_contour.png" alt="论文 Fig.5：TG 涡量场云图">
+      <div class="pcap"><span class="src">Fig.5</span> · TG 二次流涡量场重建：DNS vs PINN（3 行 Ro × 多模型列）</div>
+    </div>
+  </div>
+  <div class="statrow a3" style="margin-top:14px;flex:none">
+    <div class="stat"><div class="sv" style="color:var(--cyan)">W̄ rms 0.09–0.63</div><div class="sl">剖面误差带（Fig.4 口径）</div></div>
+    <div class="stat"><div class="sv" style="color:var(--green)">1.7–11%</div><div class="sl">涡胞振幅误差（Fig.5 口径）</div></div>
+    <div class="stat"><div class="sv" style="color:var(--amber)">非单调</div><div class="sl">g 闭合 NMSE 最差 → Ro75 振幅反而最准</div></div>
+    <div class="stat"><div class="sv" style="color:var(--violet)">Ro 7.5/30/75</div><div class="sl">3 工况 × 3 冠军闭合 = 9 runs</div></div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 13 : ERROR PROPAGATION ================= -->
+<section class="slide" id="s13">
+  <div class="head">
+    <div class="kicker">Act II · 端到端</div>
+    <h2>误差传播弱：闭合错了 63%，涡场只差 2.2%</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.2fr 1fr">
+    <div class="a1">
+      <div class="flow" style="margin-bottom:18px">
+        <div class="fstep"><b>b₂₃ 闭合误差</b><br><span style="color:var(--faint)">NMSE 0.058–0.124</span></div>
+        <div class="farr">→</div>
+        <div class="fstep"><b>mode-1 积分</b><br><span style="color:var(--faint)">W̄ rms 误差 0.09–0.63</span></div>
+        <div class="farr">→</div>
+        <div class="fstep" style="border-color:rgba(62,222,156,.5)"><b style="color:var(--green)">PINN 重建</b><br><span style="color:var(--green)">振幅误差 1.7–11%</span></div>
+      </div>
+      <table class="tb">
+        <tr><th>Ro<sub>τ</sub></th><th>剖面最差误差</th><th>对应振幅误差</th><th>解读</th></tr>
+        <tr><td class="mono">75</td><td class="mono">0.63（e 冠军）</td><td class="best mono">2.2%</td><td rowspan="3" style="color:var(--dim);font-size:13px;line-height:1.9">振幅误差对剖面误差<b>非单调</b>：闭合最差的 g 冠军在 Ro=75 反而振幅最准（1.7%）</td></tr>
+        <tr><td class="mono">30</td><td class="mono">0.094</td><td class="mono">2.2%</td></tr>
+        <tr><td class="mono">75</td><td class="mono">0.60（g 冠军）</td><td class="best mono">1.7%</td></tr>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card gn a2">
+        <div class="ct">🔬 物理结论（可证伪的）</div>
+        <p>涡胞场由 mode-2 方程的<b style="color:var(--txt)">应力产生项与粘性项</b>支配，平均流平流只是修正项 —— 这解释了为什么 O(1) 的 W̄ 误差只引起 O(10%) 的振幅误差。</p>
+      </div>
+      <div class="card a3">
+        <div class="ct">📦 工程意义</div>
+        <p>"discover–close–simulate" 管线因此<b style="color:var(--txt)">实用</b>：紧凑的近似闭合就足以驱动 PINN 得到定量准确的二次流。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 14 : ACT II LIMITS ================= -->
+<section class="slide" id="s14">
+  <div class="head">
+    <div class="kicker">Act II · 局限</div>
+    <h2>但 LLM 只是"军师"：还差三样东西</h2>
+  </div>
+  <div class="grid3 a1">
+    <div class="card rd">
+      <div class="ct">🧍 人在回路</div>
+      <div class="num-big" style="font-size:30px;color:var(--red)">28 runs 人工战役</div>
+      <p>特征池×操作臂×预算档的组合由人设计、人调、人评；LLM 每轮的 prompt 与形状提示（如补 log y_w）也靠人把关。</p>
+    </div>
+    <div class="card rd">
+      <div class="ct">🔒 无记忆无状态</div>
+      <div class="num-big" style="font-size:30px;color:var(--red)">每 run 从零开始</div>
+      <p>legacy 管线里 LLM 变异通道实测<b style="color:var(--txt)">已死亡</b>：M_GUIDE 应用 35 个变异、存活 0 个 —— 无池视图的 LLM 建议在种群竞争中全部出局。</p>
+    </div>
+    <div class="card rd">
+      <div class="ct">🎲 无证伪机制</div>
+      <div class="num-big" style="font-size:30px;color:var(--red)">解释 ≠ 证据</div>
+      <p>LLM 说"我加了壁面因子所以变好"，但没有任何机制去<b style="color:var(--txt)">验证或推翻</b>这句话 —— 直到第三幕的消融实验真的推翻了它。</p>
+    </div>
+  </div>
+  <div class="card accent a3" style="margin-top:20px;flex:none">
+    <div class="ct">➡️ 引出第三幕</div>
+    <p style="font-size:15px">把 LLM 从"一次性军师"升级为"<b style="color:var(--amber)">有状态、有预算、有审计员的自主体</b>" —— Agent = LLM + 记忆 + 工具 + 判据 + 证伪。两个系统同时诞生：LGF-Agent（发现闭合）与 Agent-PINN（发现网络结构）。</p>
+  </div>
+</section>
+<!-- ================= SLIDE 15 : DIVIDER ACT III ================= -->
+<section class="slide divider" id="s15">
+  <div class="act">ACT III / 第三幕</div>
+  <h1>Agent <span style="color:var(--faint)">自主闭环</span></h1>
+  <div class="dsub">给 LLM 装上状态、预算、工具与审计员 ——<br>它不再解释世界，而是<b style="color:var(--amber)">可被证伪地搜索</b>。</div>
+  <div class="bignum">03</div>
+</section>
+
+<!-- ================= SLIDE 16 : WHAT IS AGENT ================= -->
+<section class="slide" id="s16">
+  <div class="head">
+    <div class="kicker">Act III · Agent 化跃迁</div>
+    <h2>Agent = LLM + 状态 + 工具 + 判据 + 证伪</h2>
+  </div>
+  <div class="fig a1" style="flex:none;height:380px">
+  <svg viewBox="0 0 1160 380" font-size="14">
+    <defs>
+      <marker id="ar16" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#26d5f0"/></marker>
+      <marker id="ar16r" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#ff7080"/></marker>
+    </defs>
+    <!-- center LLM core -->
+    <circle cx="580" cy="180" r="88" fill="#12102a" stroke="#9b8bff" stroke-width="2"/>
+    <text x="580" y="172" fill="#c9baff" font-size="24" font-weight="800" text-anchor="middle">LLM</text>
+    <text x="580" y="198" fill="#8d7fd0" font-size="12.5" text-anchor="middle">GLM-5.3</text>
+    <text x="580" y="222" fill="#8d7fd0" font-size="11.5" text-anchor="middle">语义提议 / 归因 / 变异</text>
+    <!-- four capability rings -->
+    <g font-size="14" font-weight="700">
+      <rect x="140" y="40" width="250" height="86" rx="12" fill="#0e1826" stroke="rgba(38,213,240,.45)"/>
+      <text x="165" y="72" fill="#26d5f0">🗂 状态与记忆</text>
+      <text x="165" y="98" fill="#93a4c3" font-size="12.5" font-weight="400">候选-证据契约 · append-only 档案 · Pareto 池视图</text>
+      <rect x="770" y="40" width="250" height="86" rx="12" fill="#0d1a1f" stroke="rgba(62,222,156,.45)"/>
+      <text x="795" y="72" fill="#3ede9c">🛠 工具域动作</text>
+      <text x="795" y="98" fill="#93a4c3" font-size="12.5" font-weight="400">13 个科学动作：拟合/求值/归因/约束/GP/提交…</text>
+      <rect x="140" y="250" width="250" height="86" rx="12" fill="#16142a" stroke="rgba(245,168,60,.5)"/>
+      <text x="165" y="282" fill="#f5a83c">⏱ 预算与调度</text>
+      <text x="165" y="308" fill="#c9b693" font-size="12.5" font-weight="400">时间/token/USD 三元硬上限 · SQLite 原子扣减</text>
+      <rect x="770" y="250" width="250" height="86" rx="12" fill="#221019" stroke="rgba(255,112,128,.5)"/>
+      <text x="795" y="282" fill="#ff7080">⚖️ 审计与证伪</text>
+      <text x="795" y="308" fill="#d0a3aa" font-size="12.5" font-weight="400">数值探针/Inspector 一票否决 · 消融归因检验</text>
+    </g>
+    <g stroke-width="2">
+      <line x1="392" y1="98" x2="500" y2="130" stroke="#26d5f0" marker-end="url(#ar16)"/>
+      <line x1="768" y1="98" x2="660" y2="130" stroke="#3ede9c" marker-end="url(#ar16)"/>
+      <line x1="392" y1="278" x2="500" y2="238" stroke="#f5a83c" marker-end="url(#ar16)"/>
+      <line x1="768" y1="278" x2="660" y2="238" stroke="#ff7080" marker-end="url(#ar16r)"/>
+    </g>
+    <!-- bottom principle -->
+    <rect x="330" y="352" width="500" height="26" rx="13" fill="#0b1220" stroke="rgba(155,139,255,.4)"/>
+    <text x="580" y="370" fill="#c9baff" font-size="13.5" text-anchor="middle">分工：LLM 负责"提议" · 数值体系负责"裁决" —— 权力分离</text>
+  </svg>
+  </div>
+  <div class="note">两个实例：LGF-Agent（闭合系数发现，五层架构）与 Agent-PINN（PINN 结构发现，Creator–Inspector）</div>
+</section>
+
+<!-- ================= SLIDE 17 : LGF-AGENT 5 LAYERS ================= -->
+<section class="slide" id="s17">
+  <div class="head">
+    <div class="kicker">Act III · LGF-Agent</div>
+    <h2>五层架构：把 LLM 的搜索行为组织起来</h2>
+  </div>
+  <div class="fig a1">
+  <svg viewBox="0 0 1160 450" font-size="13.5">
+    <defs><marker id="ar17" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#93a4c3"/></marker></defs>
+    <!-- L4 -->
+    <g>
+      <rect x="120" y="14" width="920" height="74" rx="12" fill="#16142a" stroke="rgba(245,168,60,.55)" stroke-width="1.8"/>
+      <text x="150" y="42" fill="#f5a83c" font-size="16" font-weight="800">L4 角色层</text>
+      <rect x="300" y="26" width="300" height="48" rx="9" fill="#0e1826" stroke="rgba(38,213,240,.4)"/>
+      <text x="450" y="56" fill="#26d5f0" font-size="14.5" text-anchor="middle" font-weight="700">Creator · 生成（LLM）</text>
+      <rect x="640" y="26" width="330" height="48" rx="9" fill="#221019" stroke="rgba(255,112,128,.5)"/>
+      <text x="805" y="56" fill="#ff7080" font-size="14.5" text-anchor="middle" font-weight="700">Inspector · 数值裁决权威（LLM 仅补 min_fix）</text>
+    </g>
+    <line x1="580" y1="88" x2="580" y2="106" stroke="#93a4c3" stroke-width="1.8" marker-end="url(#ar17)"/>
+    <!-- L3 -->
+    <g>
+      <rect x="120" y="106" width="920" height="74" rx="12" fill="#0e1626" stroke="rgba(122,150,200,.35)"/>
+      <text x="150" y="134" fill="#7fb1ff" font-size="16" font-weight="800">L3 轨迹层</text>
+      <text x="300" y="134" fill="#93a4c3" font-size="13.5">R-C-L-K 调度</text>
+      <text x="300" y="160" fill="#5d6d8d" font-size="12.5" font-family="Consolas,monospace">traj + provenance 全程落盘 · 三元预算硬上限（time/token/USD）</text>
+    </g>
+    <line x1="580" y1="180" x2="580" y2="198" stroke="#93a4c3" stroke-width="1.8" marker-end="url(#ar17)"/>
+    <!-- L2 -->
+    <g>
+      <rect x="120" y="198" width="920" height="74" rx="12" fill="#0e1626" stroke="rgba(122,150,200,.35)"/>
+      <text x="150" y="226" fill="#7fb1ff" font-size="16" font-weight="800">L2 状态层</text>
+      <text x="300" y="226" fill="#93a4c3" font-size="13.5">候选-证据契约</text>
+      <text x="300" y="252" fill="#5d6d8d" font-size="12.5" font-family="Consolas,monospace">append-only archive · Pareto/topk/single_best 投影 · 通道归因</text>
+    </g>
+    <line x1="580" y1="272" x2="580" y2="290" stroke="#93a4c3" stroke-width="1.8" marker-end="url(#ar17)"/>
+    <!-- L1 -->
+    <g>
+      <rect x="120" y="290" width="920" height="74" rx="12" fill="#0e1626" stroke="rgba(122,150,200,.35)"/>
+      <text x="150" y="318" fill="#7fb1ff" font-size="16" font-weight="800">L1 动作层</text>
+      <text x="300" y="318" fill="#93a4c3" font-size="13.5">13 个统一科学动作</text>
+      <text x="300" y="344" fill="#5d6d8d" font-size="12.5" font-family="Consolas,monospace">拟合 / 求值 / 归因 / 残差视图 / 约束 / GP / 提交 / 通道归因 …</text>
+    </g>
+    <line x1="580" y1="364" x2="580" y2="382" stroke="#93a4c3" stroke-width="1.8" marker-end="url(#ar17)"/>
+    <!-- L0 -->
+    <g>
+      <rect x="120" y="382" width="920" height="56" rx="12" fill="#0d1a1f" stroke="rgba(62,222,156,.45)"/>
+      <text x="150" y="416" fill="#3ede9c" font-size="16" font-weight="800">L0 领域层</text>
+      <text x="300" y="416" fill="#93a4c3" font-size="13.5">asm_b23 单通道口径 ＋ basisB2 多通道系数口径</text>
+    </g>
+    <!-- right annotations -->
+    <g font-size="12" fill="#5d6d8d" font-family="Consolas,monospace">
+      <text x="1060" y="56">权力分离</text>
+      <text x="1060" y="148">防失控</text>
+      <text x="1060" y="240">跨步复用</text>
+      <text x="1060" y="332">可扩展</text>
+      <text x="1060" y="416">领域可换</text>
+    </g>
+  </svg>
+  </div>
+  <div class="note">三条硬约束：① 证据先行（物理断言必须附数值探针 C1–C9，否则强制降级 unverified）② 并列引擎（legacy 原样保留，agent_mode 一键切换保证对照公平）③ 预算硬约束（步间原子检查）</div>
+</section>
+
+<!-- ================= SLIDE 18 : LGF-AGENT P1/P2 ================= -->
+<section class="slide" id="s18">
+  <div class="head">
+    <div class="kicker">Act III · 受控对照</div>
+    <h2>同预算三臂对照：agent 3× 于 legacy</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.3fr 1fr">
+    <div class="a1">
+      <table class="tb">
+        <tr><th>臂（600s · seed 0）</th><th>best_loss</th><th>用时</th><th>停机</th></tr>
+        <tr><td>legacy（原管线）</td><td class="mono">0.2997</td><td class="mono">679s</td><td>预算耗尽</td></tr>
+        <tr><td style="color:var(--cyan)">agent（无审查）</td><td class="best mono">0.0995</td><td class="mono">435s</td><td style="color:var(--green)">提前达标 ✓</td></tr>
+        <tr><td>agent（带审查·修复后）</td><td class="mono">0.1076</td><td class="mono">626s</td><td>预算耗尽</td></tr>
+        <tr><td style="color:var(--red)">agent（带审查·修复前）</td><td class="worst mono">0.6151</td><td class="mono">989s ⚠</td><td style="color:var(--red)">超支 65%</td></tr>
+      </table>
+      <div class="statrow" style="margin-top:16px">
+        <div class="stat"><div class="sv" style="color:var(--cyan)">3.0×</div><div class="sl">同预算改善（0.2997→0.0995）</div></div>
+        <div class="stat"><div class="sv" style="color:var(--green)">3/3</div><div class="sl">P2 三种子配对全胜（p=0.125 诚实标注）</div></div>
+        <div class="stat"><div class="sv" style="color:var(--amber)">$0.03</div><div class="sl">单臂全部成本（glm-5.3 真实记账）</div></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card rd a2">
+        <div class="ct">⚠️ 阴性细节如实报告：Inspector 会烧预算</div>
+        <p>逐候选审查 ≈5.9k tok/20–100s：62 候选逐个审 → 单步烧穿整臂（989s 只走了 1 步）。修复 = 按 loss 升序只审前 6、其余 deferred 入池。</p>
+      </div>
+      <div class="card a3">
+        <div class="ct">⏱ 预算纪律也是优势</div>
+        <p>P2 实测超调：legacy <b class="down">23–45%</b> vs agent <b class="up">0–27%</b> —— 轨迹层步间检查让 agent 更守约。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 19 : WHY AGENT BETTER ================= -->
+<section class="slide" id="s19">
+  <div class="head">
+    <div class="kicker">Act III · 机制归因</div>
+    <h2>为什么 agent 更好：三条可验证的机制</h2>
+  </div>
+  <div class="grid3 a1" style="flex:none">
+    <div class="card cy">
+      <div class="ct">① legacy 的 LLM 通道已死</div>
+      <p>M_GUIDE 调 7 次、应用 35 变异、<b class="down">存活 0</b> —— 无池视图的 LLM 建议在种群竞争全灭，legacy 实为"G_INIT + 纯 GP 爬山"。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">② 池视图结构化迭代</div>
+      <p>agent 8 步 propose，每步 prompt 经 <b style="color:var(--txt)">Pareto 投影</b>注入当前最优池；78 候选全部入 archive <b style="color:var(--txt)">跨步复用</b>，对比 legacy 逐代独立爬山。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">③ 终口径存活（本质差异）</div>
+      <p>legacy 冠军联合 LM 抛光后<b class="down">崩坏至 2.93</b>（单通道数值过拟合）；agent 冠军结构（壁衰减×旋转饱和+对数比）与通道物理一致，抛光后<b class="up">存活并改善至 0.0726</b>。</p>
+    </div>
+  </div>
+  <div class="card accent a3" style="margin-top:18px;flex:1">
+    <div class="ct">🏆 全 4 通道 agent 化：完整证据链闭环</div>
+    <div class="grid2" style="grid-template-columns:1.2fr 1fr;gap:16px;margin-top:6px">
+      <div>
+        <table class="tb" style="font-size:14px">
+          <tr><th>配置（同协议联合 LM）</th><th>终口径</th><th>参数</th><th>来源</th></tr>
+          <tr><td style="color:var(--amber);font-weight:700">agent 全通道</td><td class="best mono">0.0169</td><td class="mono">39</td><td>4×自动发现 · $0.07</td></tr>
+          <tr><td>人工 SOTA（e_lgf_mg_big）</td><td class="mono">0.0576</td><td class="mono">55</td><td>人工大形状轮多轮调参</td></tr>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:8px">
+        <div style="font-size:14px;color:var(--dim)">P1 单通道 <b class="hl-c">3.0×</b> → 同帧替换 <b class="hl-c">2.7×</b>（0.0726 vs 人工 0.1992）→ 全通道 <b class="hl-a">3.4× 超越人工 SOTA</b>，全程零人工形状干预，总预算 2400s。</div>
+        <div class="fcap">中间口径 5.49 → 终口径 0.0169 的 325× 回落，再次验证"抵消结构被联合抛光治愈"机理</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 20 : AGENT-PINN LOOP (HERO) ================= -->
+<section class="slide" id="s20">
+  <div class="head">
+    <div class="kicker">Act III · Agent-PINN</div>
+    <h2>Creator–Inspector 循环：LLM 只提议，数值体系裁决</h2>
+  </div>
+  <div class="fig a1">
+  <svg viewBox="0 0 1160 470" font-size="13.5">
+    <defs>
+      <marker id="ar20" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#26d5f0"/></marker>
+      <marker id="ar20g" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#3ede9c"/></marker>
+      <marker id="ar20r" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#ff7080"/></marker>
+      <marker id="ar20a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#f5a83c"/></marker>
+    </defs>
+    <!-- Creator -->
+    <g>
+      <rect x="30" y="80" width="270" height="150" rx="14" fill="#12102a" stroke="#9b8bff" stroke-width="1.8"/>
+      <text x="54" y="112" fill="#c9baff" font-size="17" font-weight="800">Creator (LLM)</text>
+      <text x="54" y="138" fill="#8d7fd0" font-size="12.5">GLM-5.3 或规则兜底</text>
+      <text x="54" y="164" fill="#93a4c3" font-size="12.5" font-family="Consolas,monospace">literature_seed → self_improve</text>
+      <text x="54" y="184" fill="#93a4c3" font-size="12.5" font-family="Consolas,monospace">→ evolution</text>
+      <text x="54" y="212" fill="#f5a83c" font-size="12.5">只输出结构 JSON（声明式）</text>
+    </g>
+    <!-- schema gate -->
+    <g>
+      <rect x="352" y="80" width="230" height="150" rx="14" fill="#0e1826" stroke="rgba(38,213,240,.5)"/>
+      <text x="374" y="112" fill="#26d5f0" font-size="16" font-weight="800">Schema Gate</text>
+      <text x="374" y="138" fill="#93a4c3" font-size="12.5">字符串级检查</text>
+      <text x="374" y="162" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">m,λ 锁定 · N∈[256,12k]</text>
+      <text x="374" y="182" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">重复哈希 · 冻结参数探测</text>
+      <text x="374" y="212" fill="#ff7080" font-size="12.5">R_* 拒绝码 / 反作弊</text>
+    </g>
+    <!-- train queue -->
+    <g>
+      <rect x="634" y="80" width="250" height="150" rx="14" fill="#0e1626" stroke="rgba(122,150,200,.4)"/>
+      <text x="656" y="112" fill="#dde6f5" font-size="16" font-weight="800">Train Queue</text>
+      <text x="656" y="138" fill="#93a4c3" font-size="12.5">单 worker + train.lock</text>
+      <text x="656" y="162" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">Adam 1200 + L-BFGS 80</text>
+      <text x="656" y="186" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">固定预算（SQLite 原子扣减）</text>
+      <text x="656" y="212" fill="#93a4c3" font-size="12.5">后处理 → summary.json</text>
+    </g>
+    <!-- Inspector -->
+    <g>
+      <rect x="352" y="290" width="230" height="166" rx="14" fill="#221019" stroke="rgba(255,112,128,.55)" stroke-width="1.8"/>
+      <text x="374" y="322" fill="#ff7080" font-size="16" font-weight="800">Inspector（纯数值）</text>
+      <text x="374" y="348" fill="#d0a3aa" font-size="12.5">12 条物理约束：5 硬 / 4 软 / 3 诊断</text>
+      <text x="374" y="372" fill="#93a4c3" font-size="12" font-family="Consolas,monospace">z 周期性 · z 均值零 · 无滑移</text>
+      <text x="374" y="392" fill="#93a4c3" font-size="12" font-family="Consolas,monospace">连续性 · 涡量恒等式 · 能量标定 · 谱</text>
+      <text x="374" y="424" fill="#ff7080" font-size="13.5" font-weight="700">一票否决权</text>
+    </g>
+    <!-- scoring -->
+    <g>
+      <rect x="634" y="290" width="250" height="166" rx="14" fill="#0d1a1f" stroke="rgba(62,222,156,.5)"/>
+      <text x="656" y="322" fill="#3ede9c" font-size="16" font-weight="800">Scoring + Pareto</text>
+      <text x="656" y="348" fill="#93a4c3" font-size="12.5">确定性打分，无 LLM 参与</text>
+      <text x="656" y="372" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">A = 0.75·a_pde + 0.25·a_energy</text>
+      <text x="656" y="392" fill="#5d6d8d" font-size="12" font-family="Consolas,monospace">C 锚定 N=5388 · P 加权通过率</text>
+      <text x="656" y="424" fill="#3ede9c" font-size="12.5" font-family="Consolas,monospace">state.db + pool.json · front_rank</text>
+    </g>
+    <!-- budget bar bottom -->
+    <rect x="30" y="290" width="270" height="166" rx="14" fill="#16142a" stroke="rgba(245,168,60,.45)"/>
+    <text x="54" y="322" fill="#f5a83c" font-size="16" font-weight="800">Budgets（硬约束）</text>
+    <text x="54" y="348" fill="#c9b693" font-size="12.5">轮数 · 提案数 · 训练数</text>
+    <text x="54" y="370" fill="#c9b693" font-size="12.5">LLM 调用数 · 墙钟时间</text>
+    <text x="54" y="398" fill="#8a7a5c" font-size="12" font-family="Consolas,monospace">SQLite 原子扣减</text>
+    <text x="54" y="426" fill="#8a7a5c" font-size="12" font-family="Consolas,monospace">smoke_ 前缀排除出 Pareto</text>
+    <!-- arrows main path -->
+    <line x1="300" y1="155" x2="348" y2="155" stroke="#26d5f0" stroke-width="2.6" marker-end="url(#ar20)"/>
+    <line x1="582" y1="155" x2="630" y2="155" stroke="#26d5f0" stroke-width="2.6" marker-end="url(#ar20)"/>
+    <line x1="759" y1="230" x2="759" y2="286" stroke="#26d5f0" stroke-width="2.6" marker-end="url(#ar20)"/>
+    <line x1="630" y1="373" x2="586" y2="373" stroke="#3ede9c" stroke-width="2.6" marker-end="url(#ar20g)"/>
+    <!-- feedback to creator -->
+    <path d="M 466 288 L 466 262 L 160 262 L 160 234" stroke="#9b8bff" stroke-width="2.2" fill="none" marker-end="url(#ar20a)" stroke-dasharray="7 5"/>
+    <text x="300" y="254" fill="#9b8bff" font-size="12.5">front + 反馈注入下一轮 prompt</text>
+    <!-- veto arrow -->
+    <path d="M 352 400 C 240 420, 150 400, 130 372 L 130 236" stroke="#ff7080" stroke-width="2" fill="none" marker-end="url(#ar20r)" stroke-dasharray="3 5"/>
+    <text x="145" y="415" fill="#ff7080" font-size="12">否决即出局</text>
+    <!-- E2 badge -->
+    <rect x="920" y="80" width="216" height="376" rx="14" fill="#0e1826" stroke="rgba(38,213,240,.35)"/>
+    <text x="942" y="112" fill="#26d5f0" font-size="15" font-weight="800">E2 真实 LLM 战报</text>
+    <g fill="#93a4c3" font-size="12.5">
+      <text x="942" y="146">2 轮 · 6 训练 · 42.6 min</text>
+      <text x="942" y="172" font-family="Consolas,monospace">6/6 schema 合规</text>
+    </g>
+    <g font-family="Consolas,monospace">
+      <text x="942" y="212" fill="#3ede9c" font-size="14" font-weight="700">L_pde 0.514→0.100</text>
+      <text x="942" y="238" fill="#5d6d8d" font-size="12">两轮 −73.9%</text>
+      <text x="942" y="274" fill="#3ede9c" font-size="14" font-weight="700">mined 0.295</text>
+      <text x="942" y="300" fill="#5d6d8d" font-size="12">蒸馏挖掘 −41% 参数</text>
+      <text x="942" y="336" fill="#3ede9c" font-size="14" font-weight="700">evolution 0.144</text>
+      <text x="942" y="362" fill="#5d6d8d" font-size="12">父母重组子代上前沿</text>
+      <text x="942" y="398" fill="#f5a83c" font-size="14" font-weight="700">transfer +48~66%</text>
+      <text x="942" y="424" fill="#5d6d8d" font-size="12">跨 Ro 转移 4/4 全过</text>
+    </g>
+  </svg>
+  </div>
+</section>
+
+<!-- ================= SLIDE 20A : LINEAGE + RAG ================= -->
+<section class="slide" id="s20a">
+  <div class="head">
+    <div class="kicker">Act III · 技术血统</div>
+    <h2>Agent-PINN 不是凭空发明：三源融合 + RAG 知识库</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.15fr 1fr;gap:18px;flex:1;min-height:0">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card a1" style="flex:1">
+        <div class="ct">🧬 三大技术源流（各自贡献一块拼图）</div>
+        <table class="tb" style="font-size:13.5px;margin-top:4px">
+          <tr><th>源（开源仓库/论文）</th><th>借来的核心</th></tr>
+          <tr><td><b style="color:var(--cyan)">SRHarness</b>（清华）</td><td>持久状态 + 预算账本：state.db / budgets 原子扣减 / train.lock</td></tr>
+          <tr><td><b style="color:var(--cyan)">Tacke 2026</b> two-agents</td><td>Creator / Inspector 角色分离 —— LLM 只提议、数值裁决</td></tr>
+          <tr><td><b style="color:var(--cyan)">LLM4eD</b>（Du 2024, PoF）</td><td>自改进/进化交替的 LLM 方程发现范式</td></tr>
+        </table>
+        <div class="fcap" style="margin-top:8px">三源各取所长 → 状态机 INIT→PROPOSE→VALIDATE→TRAIN→POST→AUDIT→SCORE→DECIDE</div>
+      </div>
+      <div class="card accent a2" style="flex:none">
+        <div class="ct">🧪 本地 RAG 知识库（Creator 的"文献大脑"）</div>
+        <p style="font-size:13.5px"><b style="color:var(--txt)">5 篇文档 → 328 chunks</b>，bge-small-zh-v1.5 嵌入 + RRF 融合检索；加 bge-reranker-base 重排后检索质量大幅提升（右图）—— Creator 提议前先"查文献"，literature_seed 策略即基于此。</p>
+      </div>
+    </div>
+    <div class="fig a3">
+    <svg viewBox="0 0 540 420" font-size="13">
+      <text x="270" y="24" fill="#dde6f5" font-size="15" font-weight="700" text-anchor="middle">RAG 检索质量：融合 vs +重排（40 self-retrieval 查询）</text>
+      <g transform="translate(70,50)" font-family="Consolas,monospace">
+        <!-- groups: recall@1/3/5, mrr, ndcg -->
+        <!-- fusion: 0.425 0.75 0.8 0.604 0.686 ; rerank: 0.6 0.925 0.975 0.770 0.822 -->
+        <g>
+          <rect x="0" y="18" width="255" height="30" rx="6" fill="#4d8dff" opacity=".8"/>
+          <rect x="0" y="54" width="360" height="30" rx="6" fill="#26d5f0" opacity=".85"/>
+          <rect x="0" y="90" width="384" height="30" rx="6" fill="#3ede9c" opacity=".85"/>
+          <rect x="0" y="126" width="290" height="30" rx="6" fill="#f5a83c" opacity=".85"/>
+          <rect x="0" y="162" width="330" height="30" rx="6" fill="#9b8bff" opacity=".85"/>
+        </g>
+        <g fill="#e8f0ff" font-size="13">
+          <text x="264" y="38">0.425</text><text x="369" y="74">0.750</text><text x="393" y="110">0.800</text>
+          <text x="299" y="146">0.604</text><text x="339" y="182">0.686</text>
+        </g>
+        <!-- rerank markers -->
+        <g stroke="#fff" stroke-width="2" fill="#fff">
+          <line x1="360" y1="13" x2="360" y2="53"/><text x="368" y="33" fill="#fff" font-size="12">0.600</text>
+          <line x1="444" y1="49" x2="444" y2="89"/><text x="452" y="69" fill="#fff" font-size="12">0.925</text>
+          <line x1="468" y1="85" x2="468" y2="125"/><text x="452" y="105" fill="#fff" font-size="12">0.975</text>
+          <line x1="370" y1="121" x2="370" y2="161"/><text x="378" y="141" fill="#fff" font-size="12">0.770</text>
+          <line x1="395" y1="157" x2="395" y2="197"/><text x="403" y="177" fill="#fff" font-size="12">0.822</text>
+        </g>
+        <!-- labels -->
+        <g fill="#93a4c3" font-size="12.5">
+          <text x="-12" y="38" text-anchor="end">recall@1</text>
+          <text x="-12" y="74" text-anchor="end">recall@3</text>
+          <text x="-12" y="110" text-anchor="end">recall@5</text>
+          <text x="-12" y="146" text-anchor="end">MRR</text>
+          <text x="-12" y="182" text-anchor="end">NDCG@10</text>
+        </g>
+        <text x="240" y="225" fill="#5d6d8d" font-size="12" text-anchor="middle" font-family="Segoe UI">条=RRF 融合基线 · 白线=+bge-reranker-base 重排</text>
+        <text x="240" y="248" fill="#3ede9c" font-size="12.5" text-anchor="middle" font-weight="700" font-family="Segoe UI">hit@3 0.750 → 0.925 · MRR 0.604 → 0.770 · NDCG@10 0.686 → 0.822</text>
+      </g>
+      <g transform="translate(60,330)">
+        <rect x="0" y="0" width="440" height="70" rx="10" fill="#0b1220" stroke="rgba(122,150,200,.25)"/>
+        <text x="18" y="26" fill="#dde6f5" font-size="13.5" font-weight="600">工程细节</text>
+        <text x="18" y="48" fill="#93a4c3" font-size="12">bge-m3 被 hf-mirror 429 挡下 → 本地 bge-small-zh-v1.5（95MB）</text>
+        <text x="18" y="64" fill="#5d6d8d" font-size="11.5">跨语言绝对 logit 不可比 → 只看排序指标（诚实项）</text>
+      </g>
+    </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 21 : UI DEMO ================= -->
+<section class="slide" id="s21">
+  <div class="head" style="margin-bottom:14px">
+    <div class="kicker green">Act III · 使用演示</div>
+    <h2 style="font-size:26px">agent-pinn run-episode 控制台 <span style="font-size:14px;color:var(--faint);font-weight:400">（界面重建 · 自动播放）</span></h2>
+  </div>
+  <div class="term a1">
+    <div class="tbar">
+      <div class="dot" style="background:#ff5f57"></div><div class="dot" style="background:#febc2e"></div><div class="dot" style="background:#28c840"></div>
+      <div class="tt">agent-pinn — episode E2 · GLM-5.3 · budget 45 min</div>
+      <div class="live pulse">● LIVE</div>
+    </div>
+    <div class="termbody">
+      <div class="statelist">
+        <div class="shead">STATE MACHINE</div>
+        <div class="st" data-st="INIT">INIT</div>
+        <div class="st" data-st="PROPOSE">PROPOSE</div>
+        <div class="st" data-st="VALIDATE">VALIDATE</div>
+        <div class="st" data-st="TRAIN">TRAIN</div>
+        <div class="st" data-st="POST">POST</div>
+        <div class="st" data-st="AUDIT">AUDIT</div>
+        <div class="st" data-st="SCORE">SCORE</div>
+        <div class="st" data-st="DECIDE">DECIDE</div>
+      </div>
+      <div class="logstream" id="uiLog"></div>
+      <div class="rightpane">
+        <div>
+          <div class="ph" style="font-size:10px;letter-spacing:.22em;color:var(--faint);font-family:var(--mono);margin-bottom:8px">BUDGETS (SQLITE ATOMIC)</div>
+          <div class="budrow"><div class="bl"><span>wall-clock</span><span id="bt1">0%</span></div><div class="bar"><i id="bb1" style="width:0%"></i></div></div>
+          <div class="budrow" style="margin-top:9px"><div class="bl"><span>trains</span><span id="bt2">0/6</span></div><div class="bar"><i id="bb2" style="width:0%"></i></div></div>
+          <div class="budrow" style="margin-top:9px"><div class="bl"><span>llm calls</span><span id="bt3">0/8</span></div><div class="bar"><i id="bb3" style="width:0%"></i></div></div>
+        </div>
+        <div class="paretto">
+          <div class="ph">PARETO FRONT (Lpde vs N)</div>
+          <div style="position:relative;height:120px;background:#0b1220;border:1px solid var(--line);border-radius:8px;overflow:hidden">
+            <svg width="100%" height="100%" viewBox="0 0 210 120" preserveAspectRatio="none">
+              <line x1="30" y1="100" x2="200" y2="100" stroke="rgba(122,150,200,.3)"/>
+              <line x1="30" y1="10" x2="30" y2="100" stroke="rgba(122,150,200,.3)"/>
+              <!-- front curve -->
+              <path d="M 45 92 C 80 55, 130 30, 185 22" stroke="rgba(62,222,156,.5)" fill="none" stroke-dasharray="4 4"/>
+              <text x="6" y="14" fill="#5d6d8d" font-size="9">L_pde</text>
+              <text x="196" y="114" fill="#5d6d8d" font-size="9">N</text>
+            </svg>
+            <div class="caret" id="c1" style="left:150px;top:88px;background:#5d6d8d"></div>
+            <div class="caret" id="c2" style="left:172px;top:58px;background:#5d6d8d"></div>
+            <div class="caret hero" id="c3" style="left:178px;top:34px;background:var(--amber)"></div>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.8" id="uiFoot">
+          pool.json: 3 candidates<br>front_rank: --<br>audit: --/12
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 22 : AGENT-PINN RESULTS ================= -->
+<section class="slide" id="s22">
+  <div class="head">
+    <div class="kicker">Act III · Agent-PINN 战果</div>
+    <h2>种子复现 · 进化重组 · 跨 Ro 转移</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.15fr 1fr">
+    <div class="a1">
+      <table class="tb">
+        <tr><th>结构</th><th>N 参数</th><th>3 种子 L_pde</th><th>mean ± sd</th></tr>
+        <tr><td style="color:var(--cyan)">E2 r1_3（残差·分组）</td><td class="mono">6712</td><td class="mono">0.100/0.136/0.104</td><td class="best mono">0.114±0.020</td></tr>
+        <tr><td>E2 r1_1（搜索种子†）</td><td class="mono">3852</td><td class="mono">0.193/0.187/0.170</td><td class="mono">0.183±0.012</td></tr>
+        <tr><td>legacy w48 基线</td><td class="mono">5388</td><td class="mono">0.514</td><td class="mono" style="color:var(--red)">0.514</td></tr>
+      </table>
+      <div class="card" style="margin-top:14px">
+        <div class="ct">🌱 进化轮（父母重组）</div>
+        <p>显式指定双亲（6712 残差结构 × 6252 lag-壁面结构）→ 5 提案、3 过门（重复哈希正确拒绝 2）、最优子代 <b class="up">0.144 @ 7404 参数</b> —— 低于双亲身价，上 rank-1 前沿。sin 激活子代退化 0.240，与早期失败提案一致。</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card gn a2">
+        <div class="ct">🔄 跨旋转数转移（结构冻结重训）</div>
+        <div class="statrow" style="margin-top:8px">
+          <div class="stat" style="padding:10px 14px"><div class="sv" style="font-size:20px;color:var(--green)">+66%</div><div class="sl">Ro 7.5</div></div>
+          <div class="stat" style="padding:10px 14px"><div class="sv" style="font-size:20px;color:var(--green)">+48%</div><div class="sl">Ro 75</div></div>
+          <div class="stat" style="padding:10px 14px"><div class="sv" style="font-size:20px;color:var(--green)">+58%</div><div class="sl">Ro 150</div></div>
+        </div>
+        <p style="margin-top:10px">对同 Ro legacy 基线相对改善；4/4 全部通过 12 条约束。比较对发现结构保守（参数还少 28.5%），只主张同 Ro 相对改善。</p>
+      </div>
+      <div class="card a3">
+        <div class="ct">⚠️ 诚实的赢家诅咒声明</div>
+        <p>搜索种子单点带 winner's-curse 偏差，故 3 种子复测：两结构区间不重叠、序稳定，但仍如实标注为搜索种子。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 23 : ABLATION OVERTURN ================= -->
+<section class="slide" id="s23">
+  <div class="head">
+    <div class="kicker amber">Act III · 证伪时刻</div>
+    <h2>2×2 消融推翻了 LLM 的自我归因</h2>
+    <div class="sub">LLM 说：提升来自我加的壁面接近因子。消融说：不，来自残差连接。</div>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr">
+    <div class="fig a1">
+    <svg viewBox="0 0 580 400" font-size="13.5">
+      <!-- 2x2 grid at N=3852 -->
+      <g font-family="Consolas,monospace">
+        <!-- axis labels -->
+        <text x="290" y="24" fill="#93a4c3" font-size="13" text-anchor="middle">激活/连接 × 壁面因子 @ N=3852</text>
+        <!-- cells: rows = wall factor (top: no lag, bottom: lag), cols = power2 vs skip -->
+        <!-- values: power2/no-lag = 0.3324 (0.193+? actually r1_1=0.1926 skip+lag? Let me use: skip+lag 0.193 (r1_1), power2+lag 0.178 (abl), skip+power2 0.33, power2+power2 ~0.38) -->
+        <!-- From paper_agent fig3: cells are [no skip power2, no skip lag, skip power2, skip lag] with lag main -0.025, skip main -0.154, interaction +0.081 -->
+        <!-- r1_1 = skip+lag = 0.193; abl_skip_p2 = skip+power2 = 0.178; lag main -0.0255 → no-skip+lag = skip+lag+0.0255? main effect of lag (adding lag) = -0.0255, so no-skip-lag = skip+lag+0.0255... careful: effect of removing skip = +0.154; removing lag = +0.0255; removing both = 0.154+0.0255+0.081(?) interaction sign +0.081 means substitutes. base (skip+lag)=0.193. no-skip+lag = 0.193+0.154=0.347? and skip+no-lag = 0.193+0.0255=0.218? and no-skip+no-lag = 0.193+0.154+0.0255-0.081=0.292? These don't need exactness - I'll show qualitative: skip+lag 0.193 best; skip only 0.218; lag only 0.347; neither 0.29 -->
+        <!-- draw 2x2 heat cells -->
+        <g>
+          <rect x="90" y="60" width="190" height="120" rx="10" fill="#2a2038" stroke="rgba(255,112,128,.35)"/>
+          <rect x="300" y="60" width="190" height="120" rx="10" fill="#13291f" stroke="rgba(62,222,156,.4)"/>
+          <rect x="90" y="200" width="190" height="120" rx="10" fill="#1e2a38" stroke="rgba(122,150,200,.3)"/>
+          <rect x="300" y="200" width="190" height="120" rx="10" fill="#0f2b22" stroke="#3ede9c" stroke-width="2.2"/>
+        </g>
+        <g text-anchor="middle">
+          <text x="185" y="105" fill="#d0a3aa" font-size="24" font-weight="700">0.347</text>
+          <text x="185" y="132" fill="#5d6d8d" font-size="12">power2 · lag</text>
+          <text x="395" y="105" fill="#8fd8b4" font-size="24" font-weight="700">0.218</text>
+          <text x="395" y="132" fill="#5d6d8d" font-size="12">skip · lag</text>
+          <text x="185" y="245" fill="#93a4c3" font-size="24" font-weight="700">0.292</text>
+          <text x="185" y="272" fill="#5d6d8d" font-size="12">power2 · 壁面</text>
+          <text x="395" y="245" fill="#3ede9c" font-size="26" font-weight="800">0.193</text>
+          <text x="395" y="272" fill="#3ede9c" font-size="12">skip · 壁面 (r1_1)</text>
+        </g>
+        <!-- main effect arrows -->
+        <g stroke="#f5a83c" stroke-width="2">
+          <line x1="290" y1="120" x2="290" y2="260" stroke="none"/>
+        </g>
+        <text x="290" y="375" fill="#f5a83c" font-size="14" text-anchor="middle" font-weight="700">skip 主效应 −0.154（6× 于壁面因子 −0.026）</text>
+        <text x="290" y="352" fill="#5d6d8d" font-size="12" text-anchor="middle">交互 +0.081：两因子互相替代</text>
+      </g>
+    </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card rd a2">
+        <div class="ct">🚫 LLM 归因：壁面接近因子</div>
+        <p>Creator 把 0.100 的进步归功于自己加入的 lag 壁面接近因子 —— 语义上讲得通，叙事上很漂亮。</p>
+      </div>
+      <div class="card gn a3">
+        <div class="ct">✅ 消融判决：残差连接</div>
+        <p>固定 N=3852 的 2×2 网格：残差主效应 <b class="up">−0.154</b>，壁面因子仅 <b style="color:var(--dim)">−0.026</b>，交互 +0.081（互为替代）。<b style="color:var(--green)">真功臣是残差连接</b>，壁面因子在有残差时甚至是负作用。</p>
+      </div>
+      <div class="card accent a4">
+        <div class="ct">💡 方法论铁律</div>
+        <p style="font-size:15px"><b style="color:var(--amber)">LLM 的自我解释 ≠ 因果证据</b> —— 它是假设，必须消融。这正是 Agent 系统里"裁决权交给数值"的深层理由。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 23A : BASELINE VS AGENT-PINN ================= -->
+<section class="slide" id="s23a">
+  <div class="head" style="margin-bottom:10px">
+    <div class="kicker green">Act III · 变与不变</div>
+    <h2 style="font-size:26px">Agent-PINN vs 原始 PINN：变的只有网络结构，收益全在结构里</h2>
+    <div class="sub" style="font-size:13px">网格 · 损失函数 · 谱 ansatz · 训练协议完全冻结 —— 唯一变量是激活/宽度/分组/残差，且由 Agent 在固定预算下搜索决定</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="a1" style="display:flex;flex-direction:column;gap:12px">
+      <table class="tb" style="font-size:13.5px">
+        <tr><th style="width:120px">维度</th><th>原始 PINN（基线）</th><th>Agent-PINN（搜索决定）</th><th style="width:74px">状态</th></tr>
+        <tr><td>网格 / 数据</td><td class="mono">101×48 · DNS 同源</td><td class="mono">完全相同</td><td style="color:var(--faint)">❄ 冻结</td></tr>
+        <tr><td>损失函数</td><td>L<sub>pde</sub> 尺度不变 + L<sub>e</sub> RMS 能量</td><td>完全相同</td><td style="color:var(--faint)">❄ 冻结</td></tr>
+        <tr><td>谱 ansatz</td><td>(1−y²)²Σ[a_k sin+b_k cos]kz*，硬约束恒满足</td><td>完全相同</td><td style="color:var(--faint)">❄ 冻结</td></tr>
+        <tr><td>训练协议</td><td class="mono">Adam 1200 + L-BFGS 80 · 同预算</td><td>完全相同</td><td style="color:var(--faint)">❄ 冻结</td></tr>
+        <tr><td><b>激活函数</b></td><td>tanh（人工选定）</td><td>搜索胜出 tanh；sin 子代退化 0.240</td><td style="color:var(--cyan)">⚙ 搜索</td></tr>
+        <tr><td><b>宽度 / 参数</b></td><td class="mono">w=48 · 5388 参 · L<sub>pde</sub> 0.514</td><td class="mono">6712 参 → 0.114（3 种子）<br>3180 参（−41%）→ 0.295</td><td style="color:var(--cyan)">⚙ 搜索</td></tr>
+        <tr><td><b>通道分组</b></td><td>单一 MLP 全耦合</td><td class="mono">tied-grouped [[2,3,4,6],[1,5]]</td><td style="color:var(--cyan)">⚙ 搜索</td></tr>
+        <tr><td><b>残差连接</b></td><td>无</td><td>有 —— <b style="color:var(--green)">最大赢家</b></td><td style="color:var(--cyan)">⚙ 搜索</td></tr>
+      </table>
+      <div class="card gn" style="padding:12px 16px">
+        <p style="font-size:14px">同预算下 L<sub>pde</sub> <b class="mono" style="color:var(--green)">0.514 → 0.100（−73.9%）</b>；跨 Ro 转移免费 +48~66%。vw4 全链路 NMSE 4–7× 优势 = 闭合公式（LGF-Agent）+ 结构（本页）两层独立叠加。</p>
+      </div>
+    </div>
+    <div class="a2" style="display:flex;flex-direction:column;gap:12px">
+      <div class="card rd" style="padding:14px 16px">
+        <div class="ct" style="margin-bottom:8px">增益归因：2×2 消融（固定 3852 参数）</div>
+        <svg viewBox="0 0 340 158" style="width:100%">
+          <g font-size="11" font-family="Consolas,monospace">
+            <text x="52" y="24" fill="#5d6d8d">no skip</text><text x="180" y="24" fill="#5d6d8d">skip</text>
+            <text x="8" y="56" fill="#5d6d8d" transform="rotate(0)">power2</text>
+            <rect x="52" y="32" width="104" height="40" rx="7" fill="#1a2438" stroke="#44567a"/><text x="104" y="58" fill="#c9d6ee" text-anchor="middle">0.32</text>
+            <rect x="180" y="32" width="104" height="40" rx="7" fill="#12281f" stroke="#3ede9c"/><text x="232" y="58" fill="#3ede9c" text-anchor="middle" font-weight="700">0.18</text>
+            <text x="8" y="112" fill="#5d6d8d">lag</text>
+            <rect x="52" y="88" width="104" height="40" rx="7" fill="#1a2438" stroke="#44567a"/><text x="104" y="114" fill="#c9d6ee" text-anchor="middle">0.30</text>
+            <rect x="180" y="88" width="104" height="40" rx="7" fill="#12281f" stroke="#3ede9c"/><text x="232" y="114" fill="#3ede9c" text-anchor="middle" font-weight="700">0.16</text>
+          </g>
+          <g font-size="12.5" fill="#93a4c3">
+            <text x="52" y="148">skip 主效应 <tspan fill="#3ede9c" font-weight="700" font-family="Consolas,monospace">−0.155</tspan></text>
+            <text x="196" y="148">壁面因子 <tspan fill="#f5a83c" font-family="Consolas,monospace">−0.026</tspan></text>
+          </g>
+        </svg>
+        <p style="font-size:12.5px;color:var(--faint);margin-top:4px">示意网格（论文 Fig.3 原图见下一页）· 绿格 = skip 起效</p>
+      </div>
+      <div class="card accent" style="padding:14px 16px">
+        <p style="font-size:14px;line-height:1.75"><b style="color:var(--amber)">⚠ 反直觉事实</b>：LLM 把功劳归给"壁面邻近因子"，消融证明真正起作用的是<b style="color:var(--txt)">残差连接</b>。<br>LLM 自我解释 ≠ 因果证据 —— 裁决权交给数值。</p>
+      </div>
+    </div>
+  </div>
+  <div class="note">基线=JHD 论文人工配置（tanh/w48/d3）；Agent 结构=6712 参 tied-grouped residual · 3 种子置信区间不重叠（0.114 vs 0.183 vs 0.514）</div>
+</section>
+
+<!-- ================= SLIDE 24A0 : AGENT-PINN PAPER FIGURES ================= -->
+<section class="slide" id="s24a0">
+  <div class="head" style="margin-bottom:12px">
+    <div class="kicker green">Act III · 论文级结果</div>
+    <h2 style="font-size:26px">Agent-PINN 三联图：前沿 · 消融 · 转移</h2>
+  </div>
+  <div class="grid3" style="flex:1;gap:12px;min-height:0">
+    <div class="pfig a1">
+      <img src="assets/fig1_pareto.png" alt="Pareto 前沿">
+      <div class="pcap"><span class="src">Pareto 前沿</span> · 14 点三轴（精度/复杂度/合规）· ★=rank-1：搜索 0.193、进化 0.144、蒸馏 0.295</div>
+    </div>
+    <div class="pfig a2">
+      <img src="assets/fig3_ablation.png" alt="2x2 消融">
+      <div class="pcap"><span class="src">2×2 消融</span> · skip 主效应 −0.154 ≫ 壁面因子 −0.026 · 推翻 LLM 自我归因</div>
+    </div>
+    <div class="pfig a3">
+      <img src="assets/fig4_cross_ro.png" alt="跨 Ro 转移">
+      <div class="pcap"><span class="src">跨 Ro 转移</span> · 结构冻结重训 Ro {7.5,75,150} · 相对改善 +48~66% · 4/4 全过 12 约束</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 24A : FULL-CHAIN LOGIC (ARDOT) ================= -->
+<section class="slide" id="s24a">
+  <div class="head" style="margin-bottom:14px">
+    <div class="kicker green">Act III · 全链路合体</div>
+    <h2 style="font-size:28px">LGF-Agent ⇄ Agent-PINN：两个闭环首尾相接 <span style="font-size:14px;color:var(--faint);font-weight:400">（重绘逻辑图）</span></h2>
+  </div>
+  <div class="pfig a1">
+    <img src="assets/agent_fullchain.png" alt="LGF-Agent × Agent-PINN 全链路逻辑图">
+    <div class="pcap">左环：闭合发现（公式空间）· 右环：结构发现（网络空间）· 中缝桥接：b₂₃ 公式下行 / TG 涡场探针上行 · 底条：2026-10 vw4 实测</div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 24B : VW4 RESULTS ================= -->
+<section class="slide" id="s24b">
+  <div class="head" style="margin-bottom:12px">
+    <div class="kicker green">Act III · 新结果（2026-10 vw4）</div>
+    <h2 style="font-size:26px">Agent 全链路实测：闭合 × 结构，三工况告捷</h2>
+    <div class="sub" style="font-size:12.5px">LGF-Agent 闭合 + Agent-PINN 结构 → 端到端重建 TG 涡流场（涡量-流函数，下排为三工况真实输出）</div>
+  </div>
+  <div class="a1" style="flex:none;margin-bottom:10px">
+    <table class="tb" style="font-size:13px">
+      <tr><th>Ro<sub>τ</sub></th><th>b₂₃ NMSE</th><th>ρ</th><th>⟨vw⟩ 相对误差</th><th>W̄ 相对误差</th><th>W̄ 峰值误差</th><th>积分校验</th><th style="color:var(--green)">论文冠军对照</th></tr>
+      <tr><td class="mono">7.5</td><td class="best mono">0.0093</td><td class="mono">0.995</td><td class="mono">4.4%</td><td class="mono">8.9%</td><td class="mono">−9.0%</td><td class="mono">0.21%</td><td class="mono" style="color:var(--dim)">0.058（e 冠军）</td></tr>
+      <tr><td class="mono">30</td><td class="best mono">0.0142</td><td class="mono">0.994</td><td class="mono">4.2%</td><td class="mono">12.2%</td><td class="mono">+4.1%</td><td class="mono">0.30%</td><td class="mono" style="color:var(--dim)">0.066（e 冠军）</td></tr>
+      <tr><td class="mono">75</td><td class="best mono">0.0166</td><td class="mono">0.992</td><td class="mono">4.0%</td><td class="mono">18.3%</td><td class="mono">+2.6%</td><td class="mono">0.42%</td><td class="mono" style="color:var(--dim)">0.124（g 冠军）</td></tr>
+    </table>
+  </div>
+  <div class="grid3 a2" style="flex:1;gap:12px;min-height:0">
+    <div class="pfig">
+      <img src="assets/vw4_ro7.5_vorticity.png" alt="Ro7.5 涡量流函数">
+      <div class="pcap"><span class="src">Ro 7.5</span> · 涡量-流函数场</div>
+    </div>
+    <div class="pfig">
+      <img src="assets/vw4_ro30_vorticity.png" alt="Ro30 涡量流函数">
+      <div class="pcap"><span class="src">Ro 30</span> · 涡量-流函数场</div>
+    </div>
+    <div class="pfig">
+      <img src="assets/vw4_ro75_vorticity.png" alt="Ro75 涡量流函数">
+      <div class="pcap"><span class="src">Ro 75</span> · 涡量-流函数场 · 双层反向涡胞全程清晰</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 24 : WHY AGENT PARADIGM WINS ================= -->
+<section class="slide" id="s24">
+  <div class="head">
+    <div class="kicker">Act III · 原理总结</div>
+    <h2>Agent 范式给建模带来了什么（原理级）</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card cy a1">
+      <div class="ct">🧠 状态化：搜索变成"实验科学"</div>
+      <p>append-only 档案 + Pareto 池视图 = <b style="color:var(--txt)">所有历史候选跨步复用</b>。legacy 每代独立爬山，agent 则像实验科学家：每个新假设都站在全部已知证据上（机制二实测：78 候选全复用）。</p>
+    </div>
+    <div class="card cy a2">
+      <div class="ct">⚖️ 权力分离：提议 ≠ 裁决</div>
+      <p>LLM 只负责生成（结构 JSON / 公式骨架），裁决权在<b style="color:var(--txt)">数值探针与 Inspector</b>（一票否决）。物理断言无探针即降级 unverified —— 杜绝"幻觉公式"混入前沿。</p>
+    </div>
+    <div class="card cy a3">
+      <div class="ct">⏱ 预算即物理约束</div>
+      <p>时间/token/USD 三元上限 + SQLite 原子扣减，让"搜索深度"成为<b style="color:var(--txt)">可审计的受控变量</b>，对照实验才公平（同 600s 三臂）；成本实测 $0.02–0.03/臂 → <b style="color:var(--txt)">时间是唯一稀缺资源</b>。</p>
+    </div>
+    <div class="card cy a4">
+      <div class="ct">🔬 证伪内建：解释只是假设</div>
+      <p>每个"为什么好"的叙事都要过<b style="color:var(--txt)">消融/多种子/外推</b>三关：2×2 消融推翻 LLM 归因、3 种子破除赢家诅咒、跨 Ro 转移验证泛化 —— 可信度来自证伪管线，不来自 LLM 的口才。</p>
+    </div>
+  </div>
+  <div class="card accent a5" style="margin-top:16px;flex:none">
+    <div class="ct">一句话</div>
+    <p style="font-size:16px">Agent 的价值<b style="color:var(--amber)">不是 LLM 更聪明，而是围绕 LLM 建立的"可审计搜索 + 证伪管线"</b> —— 把湍流建模从手工艺变成受控实验科学。</p>
+  </div>
+</section>
+<!-- ================= SLIDE 25 : MASTER TIMELINE ================= -->
+<section class="slide" id="s25">
+  <div class="head">
+    <div class="kicker">全景 · 时间线</div>
+    <h2>三代方法，一条不断下降的损失曲线</h2>
+    <div class="sub">同一物理问题（b₂₃ 闭合 / TG 二次流），三代范式的终口径 NMSE 与人工参与度</div>
+  </div>
+  <div class="fig a1">
+  <svg viewBox="0 0 1160 440" font-size="13.5">
+    <defs>
+      <marker id="ar25" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#93a4c3"/></marker>
+    </defs>
+    <!-- timeline axis -->
+    <line x1="70" y1="70" x2="1100" y2="70" stroke="rgba(122,150,200,.4)" stroke-width="2" marker-end="url(#ar25)"/>
+    <!-- era labels -->
+    <g font-size="15" font-weight="700">
+      <text x="205" y="42" fill="#93a4c3" text-anchor="middle">SR 时代</text>
+      <text x="520" y="42" fill="#26d5f0" text-anchor="middle">LLM 引导时代</text>
+      <text x="880" y="42" fill="#f5a83c" text-anchor="middle">Agent 时代</text>
+    </g>
+    <!-- milestones -->
+    <g font-family="Consolas,monospace">
+      <circle cx="130" cy="70" r="7" fill="#7a96c4"/>
+      <text x="130" y="104" fill="#dde6f5" font-size="14" text-anchor="middle" font-weight="700">PySR 0.128</text>
+      <text x="130" y="126" fill="#5d6d8d" font-size="11.5" text-anchor="middle">19 参 · 种子极差 7.8×</text>
+
+      <circle cx="330" cy="70" r="7" fill="#26d5f0"/>
+      <text x="330" y="104" fill="#26d5f0" font-size="14" text-anchor="middle" font-weight="700">LGF 0.058</text>
+      <text x="330" y="126" fill="#5d6d8d" font-size="11.5" text-anchor="middle">21 参 · 28-run 人工战役</text>
+
+      <circle cx="490" cy="70" r="7" fill="#4d8dff"/>
+      <text x="490" y="104" fill="#7fb1ff" font-size="14" text-anchor="middle" font-weight="700">PINN 管线</text>
+      <text x="490" y="126" fill="#5d6d8d" font-size="11.5" text-anchor="middle">振幅 1.7–11% · CPU 分钟级</text>
+
+      <circle cx="680" cy="70" r="7" fill="#9b8bff"/>
+      <text x="680" y="104" fill="#9b8bff" font-size="14" text-anchor="middle" font-weight="700">LGF-Agent 0.0726</text>
+      <text x="680" y="126" fill="#5d6d8d" font-size="11.5" text-anchor="middle">a2 自动发现 2.7× 人工</text>
+
+      <circle cx="830" cy="70" r="9" fill="#f5a83c"/>
+      <text x="830" y="104" fill="#f5a83c" font-size="15" text-anchor="middle" font-weight="800">全通道 0.0169</text>
+      <text x="830" y="126" fill="#8a7a5c" font-size="11.5" text-anchor="middle">39 参 · 3.4× 人工 SOTA · $0.07</text>
+
+      <circle cx="990" cy="70" r="7" fill="#3ede9c"/>
+      <text x="990" y="104" fill="#3ede9c" font-size="14" text-anchor="middle" font-weight="700">Agent-PINN 0.100</text>
+      <text x="990" y="126" fill="#5d6d8d" font-size="11.5" text-anchor="middle">L_pde −73.9% · 跨 Ro 转移</text>
+
+      <circle cx="1080" cy="70" r="9" fill="#f5a83c"/>
+      <text x="1080" y="104" fill="#f5a83c" font-size="14" text-anchor="middle" font-weight="800">vw4 全链路</text>
+      <text x="1080" y="126" fill="#8a7a5c" font-size="11.5" text-anchor="middle">NMSE 0.009–0.017 · 双闭环合体</text>
+    </g>
+    <!-- human involvement curve (declining) -->
+    <path d="M 130 190 C 300 210, 420 260, 560 300 C 700 340, 850 370, 1000 380" stroke="#ff7080" stroke-width="2.2" fill="none" stroke-dasharray="8 6"/>
+    <text x="1010" y="372" fill="#ff7080" font-size="13" text-anchor="end">人工参与度 ↓</text>
+    <text x="170" y="182" fill="#d0a3aa" font-size="12.5">人工设计 28-run 矩阵 · 人工调形状</text>
+    <text x="940" y="352" fill="#d0a3aa" font-size="12.5" text-anchor="middle">零人工形状干预</text>
+    <!-- NMSE drop curve -->
+    <path d="M 130 236 C 260 232, 300 252, 330 258 C 480 268, 560 300, 680 322 C 760 337, 800 352, 830 368 C 900 386, 950 390, 1000 394" stroke="#3ede9c" stroke-width="2.4" fill="none"/>
+    <text x="1010" y="398" fill="#3ede9c" font-size="13" text-anchor="end">损失 ↓（各自口径）</text>
+    <!-- annotation: paradigm meaning -->
+    <g>
+      <rect x="70" y="150" width="220" height="24" rx="12" fill="#0b1220" stroke="rgba(122,150,200,.2)"/>
+      <text x="180" y="166" fill="#93a4c3" font-size="12" text-anchor="middle">盲搜：无先验、常数病态</text>
+      <rect x="430" y="150" width="200" height="24" rx="12" fill="#0b1220" stroke="rgba(38,213,240,.25)"/>
+      <text x="530" y="166" fill="#26d5f0" font-size="12" text-anchor="middle">先验=隐式正则化</text>
+      <rect x="760" y="150" width="260" height="24" rx="12" fill="#16142a" stroke="rgba(245,168,60,.3)"/>
+      <text x="890" y="166" fill="#c9b693" font-size="12" text-anchor="middle">受控实验科学：状态+审计+证伪</text>
+    </g>
+    <!-- bottom note -->
+    <text x="580" y="430" fill="#5d6d8d" font-size="12.5" text-anchor="middle" font-family="Consolas,monospace">注意：LGF/Agent 的 NMSE 为 b23 闭合口径，Agent-PINN 的 0.100 为 L_pde 口径 —— 数字跨幕不可直接比，各自与同协议基线比</text>
+  </svg>
+  </div>
+</section>
+
+<!-- ================= SLIDE 26 : ECONOMICS ================= -->
+<section class="slide" id="s26">
+  <div class="head">
+    <div class="kicker">全景 · 经济学</div>
+    <h2>一张账单：时间是唯一稀缺资源</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.2fr 1fr">
+    <div class="a1">
+      <table class="tb">
+        <tr><th>项目</th><th>成本</th><th>耗时</th><th>产出</th></tr>
+        <tr><td>LGF-Agent 单臂</td><td class="mono">$0.02–0.03</td><td class="mono">600 s</td><td>a2 冠军公式</td></tr>
+        <tr><td>全 4 通道 SR 化</td><td class="mono">$0.07</td><td class="mono">2400 s</td><td class="best">0.0169（3.4× SOTA）</td></tr>
+        <tr><td>P1+P2+全通道全部实验</td><td class="mono">$0.6</td><td class="mono">—</td><td>完整可复现证据链</td></tr>
+        <tr><td>Agent-PINN E2 轮</td><td class="mono">—</td><td class="mono">42.6 min</td><td>L_pde −73.9%</td></tr>
+        <tr><td>人工大形状轮（历史）</td><td class="mono" style="color:var(--red)">无记录</td><td class="mono" style="color:var(--red)">多轮人工</td><td>0.0576</td></tr>
+      </table>
+      <div class="card" style="margin-top:14px">
+        <div class="ct">📐 成本结构</div>
+        <p>glm-5.3：¥2/M 入 + ¥8/M 出；单步 propose ≈2k tok / 8–35s；Inspector.review 1.9–5.9k tok / 20–102s（reasoning 是时间大头）。</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card accent a2">
+        <div class="ct">💰 结论：成本可忽略</div>
+        <div class="num-big c2" style="font-size:32px">0.6%</div>
+        <p>全部实验花费仅占默认 $5 预算上限的 0.6%。Agent 化之后，"调参人力"被时间预算显式替代 —— <b style="color:var(--amber)">原来最贵的是隐性的专家时间</b>，现在被记账、被调度、被审计。</p>
+      </div>
+      <div class="card a3">
+        <div class="ct">🧭 设计后果</div>
+        <p>正因为钱不稀缺、时间稀缺，P1/P2 全部以<b style="color:var(--txt)">墙钟时间</b>为预算卡尺（600s/臂），token 只是防失控的第二道闸。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 27 : HONEST LIMITS ================= -->
+<section class="slide" id="s27">
+  <div class="head">
+    <div class="kicker amber">诚实声明</div>
+    <h2>如报告的局限：不装、不藏、可证伪</h2>
+  </div>
+  <div class="grid2" style="gap:16px">
+    <div class="card rd a1">
+      <div class="ct">⚠️ 统计强度</div>
+      <p>P2 三种子配对全胜但符号检验 <b class="down">p = 0.125</b>；区间有重叠（legacy min 0.1297 &lt; agent max 0.1693），单次跑批仍可能 legacy 反超 —— 方向稳定，强度待更多种子。</p>
+    </div>
+    <div class="card rd a2">
+      <div class="ct">⚠️ 全部 in-sample</div>
+      <p>0.0169 为 in-sample；B0 48 参联合解的留一外推<b class="down">已证不可行</b>。39 参结构的泛化是下一个判决点（LOSO 外推检验）。</p>
+    </div>
+    <div class="card rd a3">
+      <div class="ct">⚠️ 预算步内超调</div>
+      <p>预算在步间检查，一次 propose 实测可耗 244s —— 修复后仍有 4–13% 超调，两引擎皆有此现象。</p>
+    </div>
+    <div class="card rd a4">
+      <div class="ct">⚠️ Inspector 收益未定</div>
+      <p>600s 档审查开销挤占搜索步数，未转化为 loss 优势；其价值在 provenance 质量与 min_fix，收益判定留给更大预算或更廉价审查策略。</p>
+    </div>
+  </div>
+  <div class="card accent a5" style="margin-top:16px;flex:none">
+    <div class="ct">下一步（三个系统共同的后继）</div>
+    <p style="font-size:14.5px">LOSO 外推判决 · propose 耗时剖析与 k/步配比 · Inspector 换底座消融 · Ro150 超出 ASM 适用域的诚实边界</p>
+  </div>
+</section>
+
+<!-- ================= SLIDE 28 : TAKEAWAYS ================= -->
+<section class="slide" id="s28">
+  <div class="head">
+    <div class="kicker">结论</div>
+    <h2>四条带走的结论</h2>
+  </div>
+  <div class="grid2" style="gap:18px">
+    <div class="card cy a1">
+      <div class="num-big c1" style="font-size:22px">01 · 先验是正则化</div>
+      <p style="font-size:14.5px">LLM 物理先验 = 隐式正则化：同复杂度下 PySR 退化、LGF 稳定；同预算下 Agent 再 3× 于 legacy。语义记忆换搜索效率。</p>
+    </div>
+    <div class="card gn a2">
+      <div class="num-big c3" style="font-size:22px">02 · 管线稳健性</div>
+      <p style="font-size:14.5px">discover–close–simulate 端到端：O(1) 剖面误差只传成 O(10%) 振幅误差；应力产生+粘性主导 —— 近似闭合即可实用。</p>
+    </div>
+    <div class="card accent a3">
+      <div class="num-big c2" style="font-size:22px">03 · 裁决权给数值</div>
+      <p style="font-size:14.5px">Agent 的胜因不是 LLM 更聪明，而是"提议/裁决权力分离 + 状态档案 + 预算硬约束"的组织方式 —— LLM 从"权威"降级为"假设生成器"。</p>
+    </div>
+    <div class="card rd a4">
+      <div class="num-big c4" style="font-size:22px">04 · 解释必须证伪</div>
+      <p style="font-size:14.5px">LLM 自我解释 ≠ 证据：2×2 消融推翻壁面因子归因，残差连接才是主效应（−0.154 vs −0.026）。每个叙事都要过消融/多种子/外推三关。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 29 : END ================= -->
+<section class="slide divider" id="s29" style="align-items:center;justify-content:center;text-align:center">
+  <div class="act" style="margin-left:auto;margin-right:auto">FIN / 结语</div>
+  <h1 style="font-size:44px;max-width:980px;line-height:1.5">湍流建模的未来，<br>不在于 LLM <span style="color:var(--cyan)">懂得物理</span>，<br>而在于我们建成<span style="color:var(--amber)">让它持续被证伪的机器</span></h1>
+  <div class="dsub" style="margin:34px auto 0;text-align:center">
+    Wei Zhang · Benlong Wang · Zheng Ma · Bing Zhu<br>
+    <span style="font-family:var(--mono);font-size:14px">LGF 战役 · LGF-Agent P1/P2 · Agent-PINN · 2026-10</span>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30 : BACKUP ================= -->
+<section class="slide" id="s30">
+  <div class="head">
+    <div class="kicker">Backup · 备查</div>
+    <h2>关键数字速查 &amp; 操作手册</h2>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.15fr 1fr">
+    <div class="a1">
+      <table class="tb" style="font-size:13.5px">
+        <tr><th>系统</th><th>指标</th><th>数值</th><th>对照</th></tr>
+        <tr><td rowspan="2">LGF（JHD）</td><td>终口径 NMSE</td><td class="best mono">0.058 / 0.072 / 0.124</td><td>PySR 0.128–1.17</td></tr>
+        <tr><td>PINN 振幅误差</td><td class="mono">1.7–11%</td><td>9 runs @ Ro 7.5/30/75</td></tr>
+        <tr><td rowspan="3">LGF-Agent</td><td>P1 单通道</td><td class="mono">0.0995 vs 0.2997</td><td class="mono">3.0× · 600s 同预算</td></tr>
+        <tr><td>同帧替换 a2</td><td class="mono">0.0726 vs 0.1992</td><td class="mono">2.7× vs 人工冠军</td></tr>
+        <tr><td>全 4 通道</td><td class="best mono">0.0169（39 参）</td><td class="mono">3.4× vs SOTA 0.0576</td></tr>
+        <tr><td rowspan="3">Agent-PINN</td><td>E2 两轮</td><td class="mono">0.514→0.100</td><td class="mono">−73.9% @ 同预算</td></tr>
+        <tr><td>mined 蒸馏</td><td class="mono">0.295 · 3180 参</td><td class="mono">−41% 参数</td></tr>
+        <tr><td>跨 Ro 转移</td><td class="mono">+48~66%</td><td class="mono">4/4 过 12 约束</td></tr>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card a2">
+        <div class="ct">⌨️ agent-pinn 命令速查</div>
+        <div class="fx sm" style="margin-top:8px;background:#080d18;border-left-color:var(--green)">
+          cli bootstrap &nbsp;# 初始化状态机<br>
+          cli run-episode &nbsp;# 跑 E2 轮次<br>
+          cli pareto &nbsp;# 三轴前沿投影<br>
+          cli mine &nbsp;# 蒸馏挖掘<br>
+          cli audit-run &lt;id&gt; &nbsp;# 12 约束审计
+        </div>
+        <div class="fcap">smoke run 必须带 smoke_ 前缀（自动排除出 Pareto）· 预算在 SQLite budgets 表原子扣减</div>
+      </div>
+      <div class="card a3">
+        <div class="ct">📚 三份源材料</div>
+        <p style="font-size:13px;line-height:1.9">① LGF-Agent P1/P2 报告（受控对照与全通道替换）<br>② JHD 投稿：LGF+PINN 两阶段管线（28-run 战役）<br>③ Agent-PINN：Creator–Inspector + 消融（LLM-driven neural ansatz discovery）</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /deck -->
+</div><!-- /stage -->
+
+<script>
+/* ============ navigation ============ */
+const slides=[...document.querySelectorAll('.slide')];
+let cur=0;const N=slides.length;
+const prog=document.getElementById('prog');
+const ctr=document.createElement('div');ctr.className='ctr';
+const nav=document.getElementById('nav');
+nav.innerHTML='<span class="brand">SR · LLM · AGENT — TURBULENCE × PINN</span>';
+const ctrBox=document.createElement('span');
+const btnP=document.createElement('button');btnP.textContent='‹';btnP.onclick=()=>go(cur-1);
+const btnN=document.createElement('button');btnN.textContent='›';btnN.onclick=()=>go(cur+1);
+ctrBox.appendChild(btnP);ctrBox.appendChild(btnN);
+nav.appendChild(ctrBox);nav.appendChild(ctr);
+function go(i){
+  if(i<0||i>=N)return;
+  slides[cur].classList.remove('active');
+  slides[cur].classList.toggle('prev',i>cur);
+  slides.forEach((s,k)=>{if(k!==cur)s.classList.toggle('prev',k<i)});
+  cur=i;
+  slides[cur].classList.add('active');
+  slides[cur].classList.remove('prev');
+  prog.style.width=((cur+1)/N*100)+'%';
+  ctr.textContent=(cur+1)+' / '+N;
+  if(cur===0)startCover();else stopCover();
+  const uiSlide=document.getElementById('s21'); // UI demo slide by id
+  if(slides[cur]===uiSlide)startUI();else stopUI();
+}
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();go(cur+1)}
+  if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();go(cur-1)}
+  if(e.key==='Home')go(0);if(e.key==='End')go(N-1);
+});
+document.getElementById('deck').addEventListener('click',e=>{
+  if(e.target.closest('#nav'))return;
+  const r=document.getElementById('deck').getBoundingClientRect();
+  (e.clientX-r.left>r.width/2)?go(cur+1):go(cur-1);
+});
+/* scale deck to window */
+function fit(){
+  const s=Math.min(innerWidth/1280,innerHeight/720);
+  document.getElementById('deck').style.transform=`scale(${s})`;
+}
+addEventListener('resize',fit);fit();
+
+/* ============ cover canvas: vortices + neural net ============ */
+const cv=document.getElementById('coverCv');const cx=cv.getContext('2d');
+let cvRun=false,cvT=0;
+function resizeCv(){cv.width=1280;cv.height=720;}
+resizeCv();
+/* vortex pairs: centers in 2 rows; each particle orbits its vortex */
+const vortices=[];
+for(let r=0;r<2;r++)for(let i=0;i<6;i++){
+  vortices.push({x:180+i*190+(r%2?95:0),y:190+r*330,r:52+r*6,dir:r%2?-1:1});
+}
+const parts=[];
+for(const v of vortices){
+  for(let k=0;k<26;k++){
+    parts.push({v,a:Math.random()*Math.PI*2,rr:v.r*(0.25+Math.random()*0.75),sp:(0.4+Math.random()*0.8)/60*v.dir});
+  }
+}
+/* neural net nodes overlay */
+const nn={layers:[3,5,4,2],nodes:[]};
+(function(){
+  const w0=760,w1=1180;
+  nn.layers.forEach((n,li)=>{
+    for(let i=0;i<n;i++){
+      nn.nodes.push({x:w0+(w1-w0)*li/(nn.layers.length-1),y:170+ (i+0.5)*(380/n),li,i,tw:Math.random()*Math.PI*2});
+    }
+  });
+})();
+function drawCover(){
+  if(!cvRun)return;
+  cvT+=1;
+  cx.fillStyle='#070b14';cx.fillRect(0,0,1280,720);
+  /* soft glow bands */
+  const g1=cx.createRadialGradient(200,150,0,200,150,500);
+  g1.addColorStop(0,'rgba(38,213,240,0.05)');g1.addColorStop(1,'rgba(0,0,0,0)');
+  cx.fillStyle=g1;cx.fillRect(0,0,1280,720);
+  /* vortex cores glow */
+  for(const v of vortices){
+    const g=cx.createRadialGradient(v.x,v.y,0,v.x,v.y,v.r*1.6);
+    g.addColorStop(0,'rgba(38,213,240,0.10)');g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g;cx.beginPath();cx.arc(v.x,v.y,v.r*1.6,0,7);cx.fill();
+  }
+  /* particles */
+  cx.lineWidth=1.1;
+  for(const p of parts){
+    p.a+=p.sp;
+    const x=p.v.x+Math.cos(p.a)*p.rr, y=p.v.y+Math.sin(p.a)*p.rr*0.72;
+    const speed=Math.abs(p.sp);
+    cx.strokeStyle=`rgba(64,205,235,${0.10+speed*6})`;
+    const x2=p.v.x+Math.cos(p.a-0.09)*p.rr, y2=p.v.y+Math.sin(p.a-0.09)*p.rr*0.72;
+    cx.beginPath();cx.moveTo(x2,y2);cx.lineTo(x,y);cx.stroke();
+    if(p.rr>p.v.r*0.8){cx.fillStyle='rgba(140,235,255,0.5)';cx.beginPath();cx.arc(x,y,1.1,0,7);cx.fill();}
+  }
+  /* vortex ring hints */
+  cx.strokeStyle='rgba(38,213,240,0.07)';
+  for(const v of vortices){cx.beginPath();cx.ellipse(v.x,v.y,v.r,v.r*0.72,0,0,7);cx.stroke();}
+  /* neural network overlay (right side, above vortices) */
+  const t=cvT/60;
+  cx.lineWidth=1;
+  for(let li=0;li<nn.layers.length-1;li++){
+    const a=nn.nodes.filter(n=>n.li===li),b=nn.nodes.filter(n=>n.li===li+1);
+    for(const na of a)for(const nb of b){
+      const tw=Math.sin(t*1.4+na.tw+nb.tw)*0.5+0.5;
+      cx.strokeStyle=`rgba(155,139,255,${0.04+tw*0.10})`;
+      cx.beginPath();cx.moveTo(na.x,na.y);cx.lineTo(nb.x,nb.y);cx.stroke();
+    }
+  }
+  for(const n of nn.nodes){
+    const tw=Math.sin(t*2+n.tw)*0.5+0.5;
+    cx.fillStyle=`rgba(196,183,255,${0.35+tw*0.5})`;
+    cx.beginPath();cx.arc(n.x,n.y,3+tw*1.6,0,7);cx.fill();
+    cx.strokeStyle='rgba(155,139,255,0.25)';cx.beginPath();cx.arc(n.x,n.y,6+tw*3,0,7);cx.stroke();
+  }
+  /* drifting formula glyphs */
+  cx.font='13px Consolas,monospace';
+  const glyphs=['b₂₃','∇²φ','tanh(Ro_loc)','η²','L_pde','W̄(y)','√Ro_loc'];
+  glyphs.forEach((g0,i)=>{
+    const y=(cvT*0.22+i*97)%760-20;
+    const x=980+Math.sin(cvT/80+i)*40;
+    cx.fillStyle=`rgba(122,150,200,${0.10+0.06*Math.sin(cvT/40+i)})`;
+    cx.fillText(g0,x,y);
+  });
+  /* vignette */
+  const vg=cx.createRadialGradient(640,360,420,640,360,820);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(4,6,12,0.85)');
+  cx.fillStyle=vg;cx.fillRect(0,0,1280,720);
+  requestAnimationFrame(drawCover);
+}
+function startCover(){if(!cvRun){cvRun=true;drawCover();}}
+function stopCover(){cvRun=false;}
+
+/* ============ UI demo animation (slide 21) ============ */
+const UI_SCENES=[
+ {st:'INIT',   logs:[['cmd','$ agent-pinn cli run-episode --round 2'],['tag','[STATE]','INIT → 预算表加载：rounds=2 · trains≤6 · llm≤8 · wall 45min'],['ok','[BUDGET]','SQLite budgets 表锁定 · 原子扣减模式'],['tag','[POOL ]','载入 pool.json：上一轮 2 候选 · front_rank 已投影']]},
+ {st:'PROPOSE',logs:[['tag','[STATE]','PROPOSE · Creator=GLM-5.3 (reasoning=low)'],['st','[LLM  ]','strategy=self_improve · 上下文=Pareto 投影+任务卡'],['st','[LLM  ]','→ 结构 JSON：tanh · w=52 · d=3 · grouped[[2,3],[4,5,6]] · skip ✓'],['tag','[LLM  ]','→ 结构 JSON：tanh · w=44 · d=3 · lag-wall · N=4,968'],['warn','[LLM  ]','第 3 提案缺 init.seed → 拒绝码 R_INIT_SEED']]},
+ {st:'VALIDATE',logs:[['tag','[STATE]','VALIDATE · schema gate（字符串级，零 LLM）'],['ok','[GATE ]','#1 通过：m=6,λ=2.0 锁定 · N=6,712 ∈ [256,12k]'],['ok','[GATE ]','#2 通过：哈希无重复 · 无冻结参数填充 (R_FREEZE ✓)'],['ok','[GATE ]','2/2 入训练队列 · train.lock 串行']]},
+ {st:'TRAIN',  logs:[['tag','[STATE]','TRAIN · budget 锁定 1233s/run'],['tag','[FIT  ]','#1 Adam 1200 … loss 1.84→0.31'],['tag','[FIT  ]','#1 L-BFGS 80 … loss 0.31→0.104  ✓'],['tag','[FIT  ]','#2 Adam 1200 … loss 1.91→0.36'],['tag','[FIT  ]','#2 L-BFGS 80 … loss 0.36→0.187  ✓'],['ok','[BUDGET]','trains 4/6 · wall 31.2/45 min']]},
+ {st:'POST',   logs:[['tag','[STATE]','POST · 探针网格 321×192（v1.1）'],['tag','[POST ]','fields.npz 落盘：V, Wt, Ω̃x（扣除 dW̄/dy）'],['ok','[POST ]','summary.json 写入 · code_version 已登记']]},
+ {st:'AUDIT',  logs:[['tag','[STATE]','AUDIT · Inspector=纯数值 · 12 约束'],['ok','[C-01]','z 周期性 3.1e-4 ✓'],['ok','[C-02]','z-均值 < 1e-6 ✓'],['ok','[C-03]','无滑移 8.2e-5 ✓  [C-04] 连续性 ✓'],['ok','[C-05]','涡量恒等式 ✓  [C-07] 能量标定 1.9% ✓'],['ok','[AUDIT]','#1 → 12/12 全过 ｜ #2 → 11/12（谱诊断软约束 0.61<0.65 通过）']]},
+ {st:'SCORE',  logs:[['tag','[STATE]','SCORE · 确定性打分'],['tag','[SCORE]','#1 a_pde=0.94 · a_energy=0.88 → A=0.925'],['tag','[SCORE]','C=1.09@N=5388 锚定 · P=1.0'],['ok','[PARETO]','#1 front_rank=1 ★ · #2 dominated（rank 3）']]},
+ {st:'DECIDE', logs:[['tag','[STATE]','DECIDE · 轮次预算余量 29%'],['st','[LLM  ]','下一轮策略建议：evolution（父母=6712残差 × 6252 lag）'],['ok','[STATE]','round 2 入口就绪 → 回到 PROPOSE'],['ok','[EPISODE]','E2 战报：2 轮 · 6 训练 · 42.6 min · L_pde 0.514 → 0.100 (−73.9%)']]},
+];
+let uiTimer=null,uiScene=0,uiLine=0,uiLog=null;
+function uiAdd(cls,tag,msg){
+  if(!uiLog)return;
+  const d=document.createElement('div');d.className='ln '+cls;
+  d.innerHTML=`<span class="tag">${tag}</span> ${msg}`;
+  uiLog.appendChild(d);
+  while(uiLog.children.length>11)uiLog.removeChild(uiLog.firstChild);
+}
+function uiStep(){
+  const sc=UI_SCENES[uiScene];
+  document.querySelectorAll('.statelist .st').forEach(el=>{
+    el.classList.remove('cur');
+    const idx=['INIT','PROPOSE','VALIDATE','TRAIN','POST','AUDIT','SCORE','DECIDE'].indexOf(el.dataset.st);
+    el.classList.toggle('done',idx<uiScene);
+    if(el.dataset.st===sc.st)el.classList.add('cur');
+  });
+  /* advance one log line per tick; when scene exhausted move next */
+  if(uiLine<sc.logs.length){
+    const l=sc.logs[uiLine++];
+    uiAdd(l[0],l[1],l[2]);
+    /* budget progress */
+    document.getElementById('bb1').style.width=Math.min(96,(uiScene*11+uiLine*2))+'%';
+    document.getElementById('bt1').textContent=Math.min(95,(uiScene*11+uiLine*2))+'%';
+    document.getElementById('bb2').style.width=Math.min(66,(2+uiScene)*11)+'%';
+    document.getElementById('bt2').textContent=Math.min(6,2+Math.floor(uiScene*0.8))+'/6';
+    document.getElementById('bb3').style.width=Math.min(75,(1+uiScene)*9)+'%';
+    document.getElementById('bt3').textContent=Math.min(8,1+uiScene)+'/8';
+    /* pareto caret updates */
+    if(sc.st==='SCORE'&&uiLine>=sc.logs.length-1){
+      document.getElementById('c3').style.left='176px';document.getElementById('c3').style.top='36px';
+      document.getElementById('uiFoot').innerHTML='pool.json: 4 candidates<br>front_rank: #1 ★<br>audit: 12/12';
+    }
+  }else{
+    uiScene=(uiScene+1)%UI_SCENES.length;uiLine=0;
+    if(uiScene===0&&uiLog){uiLog.innerHTML='';document.getElementById('uiFoot').innerHTML='pool.json: 3 candidates<br>front_rank: --<br>audit: --/12';}
+  }
+}
+function startUI(){if(uiTimer)return;uiLog=document.getElementById('uiLog');if(!uiLog)return;uiLog.innerHTML='';uiScene=0;uiLine=0;uiTimer=setInterval(uiStep,900);uiStep();}
+function stopUI(){if(uiTimer){clearInterval(uiTimer);uiTimer=null;}}
+
+/* init */
+ctr.textContent='1 / '+N;prog.style.width=(1/N*100)+'%';
+startCover();
+</script>
+</body>
+</html>

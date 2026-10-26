@@ -1,0 +1,7 @@
+{
+  "model": "D:\\AI\\PINN_SF\\PINN\\models\\bge-small-zh-v1.5",
+  "dim": 512,
+  "degraded": false,
+  "n_chunks": 328,
+  "built_at": "2026-10-19T15:42:02"
+}

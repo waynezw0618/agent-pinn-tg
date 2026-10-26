@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Agent-PINN · Creator–Inspector</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#14181f; --muted:#5c6672;
+    --line:#dfe3ea; --accent:#2f6df6; --ok:#0f8a52; --bad:#c02b2b;
+    --warn:#a86a00; --chip:#eef2f8; --mono:ui-monospace,SFMono-Regular,
+    Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0f1319;--panel:#161b23;--ink:#e8eaee;--muted:#96a0ae;
+      --line:#26303c;--accent:#6f9dff;--ok:#3ddc91;--bad:#ff6b6b;
+      --warn:#e0a33a;--chip:#1d2430;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",
+    "Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:baseline;gap:16px;padding:14px 20px;
+    border-bottom:1px solid var(--line);background:var(--panel)}
+  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  .stats{margin-left:auto;display:flex;gap:14px;color:var(--muted);
+    font-size:12px}
+  .stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+  main{display:grid;grid-template-columns:minmax(420px,44%) 1fr;
+    gap:16px;padding:16px 20px 40px;align-items:start}
+  @media (max-width:1100px){main{grid-template-columns:1fr}}
+  section{background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;overflow:hidden}
+  section > h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin:0;padding:10px 14px;
+    border-bottom:1px solid var(--line);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:6px 8px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:var(--panel);font-size:11px}
+  tbody tr{cursor:pointer;border-bottom:1px solid transparent}
+  tbody tr:hover{background:var(--chip)}
+  tbody tr.sel{background:var(--chip);box-shadow:inset 3px 0 0 var(--accent)}
+  .num{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:11.5px}
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .muted{color:var(--muted)}
+  .tabs{display:flex;gap:2px;padding:8px 10px;border-bottom:1px solid var(--line);
+    flex-wrap:wrap}
+  .tabs button{border:1px solid transparent;background:none;color:var(--muted);
+    padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px}
+  .tabs button.on{background:var(--chip);color:var(--ink);
+    border-color:var(--line);font-weight:600}
+  .pane{padding:12px 14px;max-height:70vh;overflow:auto}
+  pre{margin:0;background:var(--chip);border-radius:8px;padding:10px;
+    font-family:var(--mono);font-size:11px;overflow:auto;max-height:340px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fig{width:100%;border:1px solid var(--line);border-radius:8px;
+    background:#fff;margin-bottom:10px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:99px;
+    background:var(--chip);font-size:11px;margin-right:6px}
+  .bar{height:5px;background:var(--chip);border-radius:99px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--accent)}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  button.act{border:1px solid var(--line);background:var(--panel);
+    color:var(--ink);padding:5px 10px;border-radius:6px;cursor:pointer;
+    font-size:12px}
+  button.act:hover{border-color:var(--accent);color:var(--accent)}
+  button.danger:hover{border-color:var(--bad);color:var(--bad)}
+  .empty{color:var(--muted);padding:18px 14px;font-size:12px}
+  canvas{width:100%;height:210px;display:block}
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel);
+    border:1px solid var(--line);border-left:3px solid var(--accent);
+    padding:9px 14px;border-radius:8px;font-size:12px;max-width:420px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12);display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent-PINN <span class="muted" style="font-weight:400">
+    Creator → Inspector → Pareto</span></h1>
+  <div class="stats" id="stats"></div>
+</header>
+
+<main>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <section>
+      <h2>Pareto front · accuracy ↑ / complexity ↓ / compliance ↑</h2>
+      <div style="max-height:52vh;overflow:auto">
+        <table id="pareto">
+          <thead><tr>
+            <th>run</th><th>N</th><th>A</th><th>C</th><th>P</th>
+            <th>score</th><th>L_pde</th><th>L_e</th><th>fr</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <h2>Episodes</h2>
+      <div id="eps" class="pane" style="max-height:26vh"></div>
+    </section>
+    <section>
+      <h2>Jobs</h2>
+      <div id="jobs" class="pane" style="max-height:20vh"></div>
+    </section>
+  </div>
+
+  <section id="detail">
+    <h2 id="dtitle">Select a run</h2>
+    <div class="tabs" id="tabs" style="display:none">
+      <button data-t="struct" class="on">Structure</button>
+      <button data-t="audit">Audit</button>
+      <button data-t="curve">Curves</button>
+      <button data-t="prov">Provenance</button>
+      <button data-t="figs">Figures</button>
+      <button data-t="log">Log</button>
+    </div>
+    <div class="pane" id="pane"><div class="empty">点击左侧任意一行查看详情。</div></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const f = (v, n = 3) => (v === null || v === undefined || v === "")
+  ? "–" : Number(v).toFixed(n);
+const g = (v) => (v === null || v === undefined) ? "–" : Number(v).toPrecision(3);
+let CUR = null, TAB = "struct", DATA = null;
+
+function toast(msg, bad) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.style.borderLeftColor = bad ? "var(--bad)" : "var(--accent)";
+  t.style.display = "block";
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = "none", 4200);
+}
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadSummary() {
+  const s = await api("/api/summary");
+  $("#stats").innerHTML = [
+    `runs <b>${s.runs}</b>`,
+    `candidates <b>${s.candidates}</b>`,
+    `chunks <b>${(s.tables.literature_refs ?? s.tables.chunks ?? 0)}</b>`,
+    `audits <b>${s.tables.audits ?? 0}</b>`,
+    `episodes <b>${(s.episodes || []).length}</b>`,
+  ].join("");
+}
+
+async function loadPareto() {
+  const d = await api("/api/pareto?top=40");
+  const tb = $("#pareto tbody");
+  tb.innerHTML = d.rows.map(r => {
+    const cls = (r.eligible ? "" : "muted");
+    return `<tr data-run="${esc(r.run_name)}" class="${r.run_name === CUR ? "sel" : ""} ${cls}">
+      <td>${esc(r.run_name)}${r.provisional ? ' <span class="badge">prov</span>' : ''}</td>
+      <td class="num">${r.param_count ?? "–"}</td>
+      <td class="num">${f(r.accuracy, 3)}</td>
+      <td class="num">${f(r.complexity, 3)}</td>
+      <td class="num ${r.compliance === null ? "" : (r.compliance >= 0.999 ? "ok" : "warn")}">
+        ${r.compliance === null ? "–" : f(r.compliance, 2)}</td>
+      <td class="num"><b>${f(r.score, 3)}</b></td>
+      <td class="num">${f(r.L_pde, 4)}</td>
+      <td class="num">${g(r.L_energy)}</td>
+      <td class="num">${r.front_rank}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="9" class="empty">还没有已训模型。</td></tr>`;
+  tb.querySelectorAll("tr[data-run]").forEach(tr =>
+    tr.onclick = () => openRun(tr.dataset.run));
+}
+
+async function openRun(name) {
+  CUR = name;
+  document.querySelectorAll("#pareto tbody tr").forEach(tr =>
+    tr.classList.toggle("sel", tr.dataset.run === name));
+  DATA = await api(`/api/run/${encodeURIComponent(name)}`);
+  $("#tabs").style.display = "flex";
+  $("#dtitle").innerHTML = `${esc(name)}
+    <span class="muted" style="font-weight:400">· ${esc(DATA.run.status)}
+    · ${DATA.run.duration_s ? Math.round(DATA.run.duration_s) + " s" : ""}</span>`;
+  render();
+}
+
+function auditRows(a) {
+  const rows = a.audits || [];
+  if (!rows.length) return `<div class="empty">尚无审计记录。</div>`;
+  const hard = rows.filter(r => r.kind === "hard");
+  const soft = rows.filter(r => r.kind === "soft");
+  const diag = rows.filter(r => r.kind !== "hard" && r.kind !== "soft");
+  const blk = (title, arr) => `<h3 style="font-size:12px;margin:14px 0 6px">
+      ${title}</h3>` + (arr.length ? `<table><thead><tr><th>code</th>
+      <th>value</th><th>threshold</th><th>result</th></tr></thead><tbody>` +
+      arr.map(r => `<tr><td>${esc(r.code)}</td>
+        <td class="num">${g(r.value)}</td>
+        <td class="num">${g(r.threshold)}</td>
+        <td class="${r.passed ? "ok" : "bad"}">${r.passed ? "PASS" : "FAIL"}</td>
+      </tr>`).join("") + `</tbody></table>` : `<div class="empty">–</div>`);
+  return blk("Hard identities (veto)", hard) +
+         blk("Soft physics (scored)", soft) +
+         blk("Diagnostics (never enforced)", diag);
+}
+
+function drawCurve(hist) {
+  const c = $("#cv");
+  if (!c || !hist.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  c.width = W * dpr; c.height = H * dpr;
+  const x = c.getContext("2d");
+  x.scale(dpr, dpr);
+  const css = getComputedStyle(document.body);
+  const ink = css.getPropertyValue("--ink"), muted = css.getPropertyValue("--muted");
+  const line = css.getPropertyValue("--line");
+  const keys = ["loss", "L_pde", "L_energy"].filter(k =>
+    hist.some(h => typeof h[k] === "number" && h[k] > 0));
+  if (!keys.length) return;
+  const cols = {loss: "#2f6df6", L_pde: "#c02b2b", L_energy: "#0f8a52"};
+  const pad = {l: 46, r: 10, t: 12, b: 24};
+  const xs = hist.map(h => h.step);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let lo = Infinity, hi = -Infinity;
+  hist.forEach(h => keys.forEach(k => {
+    const v = h[k]; if (typeof v === "number" && v > 0) {
+      lo = Math.min(lo, Math.log10(v)); hi = Math.max(hi, Math.log10(v)); }
+  }));
+  if (!isFinite(lo)) return;
+  const P = v => pad.l + (v - x0) / Math.max(1e-9, x1 - x0) * (W - pad.l - pad.r);
+  const Q = v => pad.t + (hi - Math.log10(Math.max(v, 1e-12))) /
+    Math.max(1e-9, hi - lo) * (H - pad.t - pad.b);
+  x.clearRect(0, 0, W, H);
+  x.strokeStyle = line; x.lineWidth = 1; x.font = "10px " + css.fontFamily;
+  x.fillStyle = muted;
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * i / 4, y = Q(Math.pow(10, v));
+    x.beginPath(); x.moveTo(pad.l, y); x.lineTo(W - pad.r, y); x.stroke();
+    x.fillText(Math.pow(10, v).toPrecision(2), 4, y + 3);
+  }
+  x.fillText("step " + x0, pad.l, H - 6);
+  x.fillText(String(x1), W - pad.r - 24, H - 6);
+  keys.forEach((k, i) => {
+    x.strokeStyle = cols[k]; x.lineWidth = 1.8; x.beginPath();
+    let started = false;
+    hist.forEach(h => {
+      const v = h[k]; if (typeof v !== "number" || v <= 0) { started = false; return; }
+      const px = P(h.step), py = Q(v);
+      if (!started) { x.moveTo(px, py); started = true; } else x.lineTo(px, py);
+    });
+    x.stroke();
+    x.fillStyle = cols[k]; x.fillRect(pad.l + i * 84, 2, 8, 3);
+    x.fillText(k, pad.l + 12 + i * 84, 8);
+  });
+}
+
+function render() {
+  const p = $("#pane"), d = DATA;
+  if (!d) return;
+  if (TAB === "struct") {
+    const st = d.structure || {};
+    p.innerHTML = `
+      <div class="row">
+        <button class="act" id="a-audit">重跑审计</button>
+        <button class="act" id="a-retrain">重训</button>
+        <button class="act danger" id="a-veto">否决</button>
+        <span class="muted" style="margin-left:auto">
+          ${st.trunk ? `trunk ${st.trunk.width}×${st.trunk.depth}
+          · ${st.trunk.activation}/${st.trunk.skip}/${st.trunk.norm}
+          · heads ${st.heads.mode}${st.heads.mode === "tied_grouped"
+            ? " r=" + st.heads.rank : ""}
+          · wall ${st.wall.type}` : ""}</span>
+      </div>
+      <pre>${esc(JSON.stringify(st, null, 2))}</pre>
+      <h3 style="font-size:12px;margin:14px 0 6px">config</h3>
+      <pre>${esc(JSON.stringify(d.config, null, 2).slice(0, 4000))}</pre>`;
+    $("#a-audit").onclick = async () => {
+      toast("审计中…");
+      try {
+        const r = await api(`/api/run/${encodeURIComponent(CUR)}/audit`,
+                            {method: "POST"});
+        toast(`P=${f(r.compliance, 3)} · ${r.results.filter(x => !x.passed)
+              .map(x => x.code).join(", ") || "全部通过"}`);
+        await openRun(CUR); await loadPareto();
+      } catch (e) { toast("审计失败: " + e.message, true); }
+    };
+    $("#a-retrain").onclick = async () => {
+      try {
+        const r = await api(`/api/run/${encodeURIComponent(CUR)}/retrain`,
+                            {method: "POST"});
+        toast(`已入队 ${r.run}（job ${r.job}）`);
+        await loadJobs();
+      } catch (e) { toast("入队失败: " + e.message, true); }
+    };
+    $("#a-veto").onclick = async () => {
+      if (!confirm(`否决 ${CUR}？该操作会绕过自动评分。`)) return;
+      try {
+        await api(`/api/run/${encodeURIComponent(CUR)}/veto`, {method: "POST"});
+        toast("已否决"); await loadPareto(); await openRun(CUR);
+      } catch (e) { toast("失败: " + e.message, true); }
+    };
+  } else if (TAB === "audit") {
+    const rows = d.audits || [];
+    const nPass = rows.filter(r => r.passed).length;
+    p.innerHTML = `<div class="row"><span class="muted">
+        ${nPass}/${rows.length} passed · code ${rows[0]?.code_version || "–"}</span></div>`
+      + auditRows(d);
+  } else if (TAB === "curve") {
+    p.innerHTML = d.history.length
+      ? `<canvas id="cv"></canvas>
+         <div class="muted" style="margin-top:8px">对数纵轴；
+         ${d.history.length} 个记录点</div>`
+      : `<div class="empty">没有 history.json。</div>`;
+    drawCurve(d.history);
+  } else if (TAB === "prov") {
+    const pr = d.provenance || {};
+    p.innerHTML = `
+      <table><tbody>
+        <tr><td>source</td><td class="num">${esc(pr.source)}</td></tr>
+        <tr><td>strategy</td><td class="num">${esc(pr.strategy)}</td></tr>
+        <tr><td>provider / model</td><td class="num">${esc(pr.provider)} / ${esc(pr.model)}</td></tr>
+        <tr><td>confidence</td><td class="num">${f(pr.confidence, 2)}</td></tr>
+      </tbody></table>
+      <h3 style="font-size:12px;margin:14px 0 6px">rationale</h3>
+      <pre style="white-space:pre-wrap">${esc(pr.rationale || "–")}</pre>
+      <h3 style="font-size:12px;margin:14px 0 6px">literature refs</h3>
+      ${(d.refs || []).length ? d.refs.map(r => `<div class="row"
+        style="align-items:flex-start"><span class="badge">${esc(r.chunk_id)}</span>
+        <span style="white-space:pre-wrap">${esc((r.quote || r.text || "").slice(0, 600))}</span>
+        </div>`).join("") : `<div class="empty">无引用。</div>`}`;
+  } else if (TAB === "figs") {
+    p.innerHTML = d.figures.length ? d.figures.map(n =>
+      `<div><div class="muted" style="margin:4px 0">${esc(n)}</div>
+       <img class="fig" src="/figures/${encodeURIComponent(CUR)}/${encodeURIComponent(n)}"
+            alt="${esc(n)}"></div>`).join("")
+      : `<div class="empty">该 run 尚未生成图。</div>`;
+  } else {
+    p.innerHTML = `<pre>${esc(d.log_tail || "(no log)")}</pre>`;
+  }
+}
+
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
+  TAB = b.dataset.t;
+  document.querySelectorAll("#tabs button").forEach(o =>
+    o.classList.toggle("on", o === b));
+  render();
+});
+
+async function loadEps() {
+  const d = await api("/api/episodes");
+  $("#eps").innerHTML = d.rows.length ? d.rows.map(e => `
+    <div class="row"><span class="badge">${esc(e.state)}</span>
+      <b>${esc(e.episode)}</b>
+      <span class="muted">rounds ${e.rounds ?? "–"} · trains ${e.trains ?? "–"}
+      · compliance ${e.compliance_rate === undefined || e.compliance_rate === null
+        ? "–" : Math.round(e.compliance_rate * 100) + "%"}
+      ${e.best ? "· best " + esc(e.best.run || "") : ""}</span></div>`).join("")
+    : `<div class="empty">还没有 episode。运行
+       <code>python -m agent_pinn.cli run-episode --episode E1</code></div>`;
+}
+
+async function loadJobs() {
+  const d = await api("/api/jobs?top=12");
+  $("#jobs").innerHTML = d.rows.length ? `<table><tbody>` + d.rows.map(j =>
+    `<tr><td>${esc(j.id)}</td><td>${esc(j.kind)}</td>
+     <td class="num">${esc(j.run_name || "–")}</td>
+     <td class="${j.state === "failed" ? "bad" : (j.state === "done" ? "ok" : "warn")}">
+       ${esc(j.state)}</td>
+     <td class="muted">${esc((j.error || "").slice(0, 60))}</td></tr>`).join("")
+    + `</tbody></table>` : `<div class="empty">队列为空。</div>`;
+}
+
+(async function () {
+  await Promise.all([loadSummary(), loadPareto(), loadEps(), loadJobs()]);
+  const params = new URLSearchParams(location.search);
+  const run = params.get("run");
+  if (run) openRun(run);
+  setInterval(() => { loadSummary(); loadJobs(); }, 15000);
+})();
+</script>
+</body>
+</html>
