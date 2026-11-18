@@ -156,7 +156,7 @@ svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif}
     <div class="csub">—— 以旋转槽道流 Taylor–Görtler 二次流为例</div>
     <div class="cmeta">
       <b>Wei Zhang · Benlong Wang · Zheng Ma · Bing Zhu</b><br>
-      LGF 战役 · LGF-Agent P1/P2 · Agent-PINN Creator–Inspector &nbsp;|&nbsp; 2026-10
+      LGF 战役 · LGF-Agent P1/P2 · Agent-PINN · 指标审计与自主重构 &nbsp;|&nbsp; 2026-10 → 11
     </div>
   </div>
 </section>
@@ -1348,6 +1348,230 @@ svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif}
     <p style="font-size:16px">Agent 的价值<b style="color:var(--amber)">不是 LLM 更聪明，而是围绕 LLM 建立的"可审计搜索 + 证伪管线"</b> —— 把湍流建模从手工艺变成受控实验科学。</p>
   </div>
 </section>
+<!-- ================= ACT IV DIVIDER ================= -->
+<section class="slide divider" id="s30div">
+  <div class="act">ACT IV / 第四幕 · 2026-11 升级</div>
+  <h1 style="font-size:40px;max-width:1000px;line-height:1.5">当指标本身成为<br><span style="color:var(--amber)">被博弈的对象</span></h1>
+  <div class="dsub">Agent 不止要找到更好的结构 ——<br>它必须证明"更好"这件事，没有被自己的目标函数欺骗。</div>
+  <div class="bignum">04</div>
+</section>
+
+<!-- ================= SLIDE 30A : PROXY GAMING ================= -->
+<section class="slide" id="s30a">
+  <div class="head">
+    <div class="kicker amber">Act IV · 正向欺骗</div>
+    <h2 style="font-size:26px">代理博弈：一个"最优"结构，方程却解得更差</h2>
+    <div class="sub">受控战役（s17）发现 c5 结构：L_pde = 0.098（漂亮）但绝对残差 = 153（同侪 8–33，差 5–19×）</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="a1" style="display:flex;flex-direction:column;gap:12px">
+      <div class="card rd">
+        <div class="ct">🎯 机理：归一化损失可被"放大"而非"解好"</div>
+        <p style="font-size:14px;line-height:1.85">
+        ① 壁面因子 <span class="mono">exp_blend(a=−0.5)</span> 把谱 ansatz 的 y 导数整体放大<br>
+        ② 残差各分量同步膨胀 <span class="mono">f''''</span> 放大约 <b class="down">40×</b><br>
+        ③ 尺度不变 L_pde 除以自身分量 RMS → 比值反而<b class="down">下降</b><br>
+        ④ 方程满足得更差，代理分数却更漂亮 —— <b style="color:var(--amber)">古德哈特定律的 PINN 版本</b></p>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="ct">📊 反差一览</div>
+        <table class="tb" style="font-size:13.5px">
+          <tr><th>指标</th><th>c5（博弈结构）</th><th>健康结构</th></tr>
+          <tr><td>L_pde（相对）</td><td class="mono" style="color:var(--green)">0.098 ✓</td><td class="mono">0.2–0.7</td></tr>
+          <tr><td>绝对方程残差</td><td class="mono" style="color:var(--red)">153 ✗</td><td class="mono">8–33</td></tr>
+          <tr><td>四阶导放大倍数</td><td class="mono" style="color:var(--red)">~40×</td><td class="mono">&lt;2×</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="a2" style="display:flex;flex-direction:column;gap:12px">
+      <div class="card cy" style="flex:1">
+        <div class="ct">🛡 Adversary：训练前的确定性筛查</div>
+        <p style="font-size:14px;line-height:1.8">新增 <span class="mono">agent_pinn/adversary.py</span>：在 dense y 网格上比较候选壁面因子 vs power2 的一至四阶导 L2 范数，<b style="color:var(--cyan)">放大倍数 &gt;4× 即 flag</b>（阈值在历史 A 臂语料上校准，非调参）。</p>
+        <p style="font-size:13.5px;color:var(--dim)">软门控：不同实验臂可分别选择"拒绝"或"仅记录"；不改 DB、不碰 Pareto → 反作弊本身也可审计。</p>
+      </div>
+      <div class="card gn">
+        <div class="ct">🔁 从个案到协议</div>
+        <p style="font-size:13.5px">这个发现直接催生了第三幕之后的整套防线：残差诊断包（S1）· 预注册预测（S2）· 版本契约（S3）· 不确定性入前沿（S7）—— 见后面四页。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30B : METRIC VALIDITY ================= -->
+<section class="slide" id="s30b">
+  <div class="head">
+    <div class="kicker amber">Act IV · 反向欺骗</div>
+    <h2 style="font-size:26px">rms_eval 反物理：公认的最优解被判"最差"</h2>
+    <div class="sub">V4 中止时发现的指标危机：物理最优的谱参考解在评审常用绝对残差上，比所有 PINN"赢家"差 17–33 倍</div>
+  </div>
+  <div class="grid2" style="grid-template-columns:1.05fr 1fr">
+    <div class="a1">
+      <table class="tb">
+        <tr><th>解</th><th>L_pde</th><th>L_energy</th><th>rms_eval</th></tr>
+        <tr><td>谱参考解（物理最优）</td><td class="best mono">0.0565</td><td class="best mono">0.0002</td><td class="worst mono">250.5</td></tr>
+        <tr><td>V1 冠军 multi</td><td class="mono">0.66</td><td class="mono">~0.02</td><td class="mono">7.52</td></tr>
+        <tr><td>V3 random 最稳</td><td class="mono">0.63</td><td class="mono">0.0236</td><td class="mono">12.8</td></tr>
+      </table>
+      <div class="card rd" style="margin-top:14px">
+        <div class="ct">⚠️ 根因</div>
+        <p style="font-size:13.5px">绝对残差对场振幅和高阶导量级齐次 —— <b style="color:var(--red)">奖励"项量级小的弱场/欠平衡场"，惩罚能量校准好的真解</b>。L_pde 可博弈 + rms_eval 反物理 ⇒ 两把尺子都不可单独作终点。</p>
+      </div>
+      <div class="card gn" style="margin-top:12px">
+        <div class="ct">✅ 关键复核：E2 头条在物理口径下存活且更强</div>
+        <p style="font-size:13.5px">能量误差 0.0158（hand-tuned）→ <b class="mono" style="color:var(--green)">0.0057</b>（E2 冠军），好 <b>2.8×</b>；消融排序一致。但谱参考仍好 E2 冠军 28× —— <b style="color:var(--amber)">headroom 在表示层</b>。</p>
+      </div>
+    </div>
+    <div class="pfig a2">
+      <img src="assets/act4_metric.png" alt="指标有效性散点">
+      <div class="pcap"><span class="src">fig_v5_metric</span> · 指标有效性：oracle / c5 在两把尺子上的错位</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30C : RANK CORRELATION ================= -->
+<section class="slide" id="s30c">
+  <div class="head">
+    <div class="kicker amber">Act IV · 代理 vs 物理</div>
+    <h2 style="font-size:26px">代理目标与下游物理误差：几乎没有一致的排序</h2>
+    <div class="sub">n=12 离线对账（9 手工闭合 + 3 agent 闭合，Ro 7.5/30/75）—— 零训练，纯指标审计</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="pfig a1">
+      <img src="assets/act4_rank_corr.png" alt="秩相关">
+      <div class="pcap"><span class="src">fig_rank_correlation</span> · Spearman/Kendall + top-1 命中 + 选择性后悔</div>
+    </div>
+    <div class="a2" style="display:flex;flex-direction:column;gap:12px">
+      <table class="tb" style="font-size:13px">
+        <tr><th>代理指标</th><th>Spearman ρ</th><th>top-1</th><th>平均后悔</th></tr>
+        <tr><td>b₂₃ NMSE</td><td class="mono">+0.154</td><td class="mono">2/3</td><td class="mono">+0.27pp</td></tr>
+        <tr><td>W̄ rel. RMSE</td><td class="mono">+0.517</td><td class="mono">1/3</td><td class="mono">+0.38pp</td></tr>
+        <tr><td>L_pde（搜索目标）</td><td class="worst mono">−0.427</td><td class="worst mono">0/3</td><td class="worst mono">+7.93pp</td></tr>
+      </table>
+      <div class="card rd" style="flex:1">
+        <div class="ct">🚨 核心张力</div>
+        <p style="font-size:14px;line-height:1.75">Agent-PINN 搜索优化的 <b class="mono">L_pde</b> 与真正关心的振幅误差<b style="color:var(--red)">方向相反</b>（ρ=−0.427），0/3 命中 oracle。<br>⚠️ 但 n=12、legacy 固定架构样本 —— <b>不能直接外推为"架构搜索无效"</b>；需要下游对齐的适应度 + 秩相关/选择性后悔作为可计算的验证协议。</p>
+      </div>
+      <div class="card" style="padding:10px 16px">
+        <p style="font-size:12.5px;color:var(--dim)">没有任何代理达到 ρ≥0.6 且 p&lt;0.05；b₂₃ NMSE 仍 2/3 命中（不能笼统说闭合 NMSE 无用）。诚实边界：单 seed、分组 n=4 只作描述。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30D : S1-S3/S7 MECHANISMS ================= -->
+<section class="slide" id="s30d">
+  <div class="head">
+    <div class="kicker green">Act IV · 四道防线</div>
+    <h2 style="font-size:26px">从"给 LLM 更好的提示"到"让理由可证伪、可比较"</h2>
+    <div class="sub">2026-11 新增四个机制模块 —— 回答 JCP 审稿人的第一问：改进到底来自物理，还是拟合？</div>
+  </div>
+  <div class="grid2 a1" style="grid-template-columns:1fr 1fr;gap:14px;flex:1;min-height:0">
+    <div class="card cy">
+      <div class="ct">S1 · residual_diag.py — 结构化残差包</div>
+      <p style="font-size:13.5px">Creator 原本只看到 6 个标量，无法区分"壁面集中 / 某展向模态 / L-BFGS 平台"三类失败。现在从 fields.npz 生成紧凑诊断包，让解释建立在结构上而非标量上。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">S2 · prereg.py — 预注册可证伪预测</div>
+      <p style="font-size:13.5px">训练前必须写下 L_pde 区间、主导模态、壁/核残差比；事后核对。<b style="color:var(--txt)">事后理由不可证伪，事前预测可以</b> —— 直面 2×2 消融推翻 LLM 自述的教训。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">S3 · contract.py — 版本化物理/数值契约</div>
+      <p style="font-size:13.5px">三层契约：冻结问题定义 / agent 可搜的数值设计空间 / 裁决规则。只有 <span class="mono">contract_sha256</span> 相同的 run 才可比 —— 改进是物理还是 fitting，先看契约指纹。</p>
+    </div>
+    <div class="card cy">
+      <div class="ct">S7 · uncertainty.py — 不确定性进 Pareto</div>
+      <p style="font-size:13.5px">三轴前沿按单 seed 排名 = 赢家诅咒。新增第四轴稳健度 <span class="mono">R=1/(1+CV)</span>，用已有 3-seed 重跑量化，让"稳定地好"优于"侥幸最好"。</p>
+    </div>
+  </div>
+  <div class="note">另有 adversary.py（训练前代理博弈筛查，见前页）与 multiagent.py（角色分解，见后页）· 全部为离线/只读，不改训练栈</div>
+</section>
+
+<!-- ================= SLIDE 30E : MULTI-AGENT ================= -->
+<section class="slide" id="s30e">
+  <div class="head">
+    <div class="kicker green">Act IV · 组织方式</div>
+    <h2 style="font-size:26px">多角色分解：把"一个 LLM 全包"拆成可归因的流水线</h2>
+    <div class="sub">V1 预注册实验：Diagnoser → Designer → Adversary → Recombiner，与单 Creator / 随机搜索同预算对照</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="a1" style="display:flex;flex-direction:column;gap:12px">
+      <div class="pfig" style="min-height:240px">
+        <img src="assets/act4_v5_arch.png" alt="五角色架构">
+        <div class="pcap"><span class="src">fig_v5_arch</span> · 角色分工 + 状态机</div>
+      </div>
+      <div class="card gn">
+        <p style="font-size:13.5px">预注册判据在统一终点下成立：分解式多 Agent 优于单 Creator 与随机搜索；r2→r3 角色输出→结构改动→残差下降有可审计链。</p>
+      </div>
+    </div>
+    <div class="a2" style="display:flex;flex-direction:column;gap:12px">
+      <div class="pfig" style="min-height:240px">
+        <img src="assets/act4_v5_governance.png" alt="治理回路">
+        <div class="pcap"><span class="src">fig_v5_governance</span> · 治理回路 vs 裸 LLM（真实拦截计数 11/2/2/1）</div>
+      </div>
+      <div class="card rd">
+        <p style="font-size:13.5px">⚠️ 必须同时声明：单 seed 小样本；single 臂有效训练 6/9；冠军 seed 2 尺度退化、两个稳健 readout 未过；Recombiner 曾漏网 L_pde=0.0517/rms_eval=2353 的结构。<b style="color:var(--amber)">胜因是组织方式，不是 LLM 更聪明</b>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30F : V5 REFRAME ================= -->
+<section class="slide" id="s30f">
+  <div class="head">
+    <div class="kicker green">Act IV · 自主问题重构</div>
+    <h2 style="font-size:26px">V5：Agent 不只搜结构，还能换掉假设空间</h2>
+    <div class="sub">机械触发器 T1（平台）/T2（距 oracle &gt;10×）→ Strategist 在冻结菜单 {cheb, fourier}×K{8..32} 上决策 → 五条预注册判据全过</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="a1">
+      <table class="tb" style="font-size:13.5px">
+        <tr><th>判据</th><th>结果</th></tr>
+        <tr><td>触发器开火（严格 T3 / 修正 T3'）</td><td>NO / <b class="mono" style="color:var(--green)">YES</b></td></tr>
+        <tr><td>B 臂 Le ≤ 5e−4</td><td class="mono" style="color:var(--green)">PASS · 0.000242</td></tr>
+        <tr><td>B ≤ C（自主不劣于人类）</td><td class="mono" style="color:var(--green)">PASS · 精确相等</td></tr>
+        <tr><td>B &lt; D（选择有价值）</td><td class="mono" style="color:var(--green)">PASS · 2.3×</td></tr>
+        <tr><td>全账本可重放</td><td class="mono" style="color:var(--green)">PASS</td></tr>
+      </table>
+      <div class="card" style="margin-top:14px">
+        <div class="ct">🎯 命中与边界</div>
+        <p style="font-size:13.5px">GLM-5.3 选 <b class="mono">cheb K=24</b> → Le=0.000242 精确命中 oracle；系数种子差 3% vs MLP 层 3–6× —— <b style="color:var(--amber)">不稳定性住在训练栈里，不在问题里</b>。<br>⚠️ B=C=oracle：LLM 只是复现者，无独立贡献 → 用户判定"倒退"，催生 V6。</p>
+      </div>
+    </div>
+    <div class="pfig a2">
+      <img src="assets/act4_v5_fields.png" alt="谱参考 vs MLP 平台流场">
+      <div class="pcap"><span class="src">fig_v5_fields</span> · 谱参考 vs MLP 平台冠军：流场与残差场</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SLIDE 30G : V6-B ================= -->
+<section class="slide" id="s30g">
+  <div class="head">
+    <div class="kicker green">Act IV · 表示层先验</div>
+    <h2 style="font-size:26px">V6-B：一半系数，接近 oracle —— 但归因仍要克制</h2>
+    <div class="sub">保留 cheb 解析有界四阶导，LLM 从 8 条冻结模态规则选一条；GLM-5.3 独立选 R2 EVEN12（T0,T2,…,T22，144 参 = oracle 一半）</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:16px;flex:1;min-height:0">
+    <div class="a1">
+      <table class="tb" style="font-size:13px">
+        <tr><th>臂</th><th>Le 均值</th><th>判读</th></tr>
+        <tr><td>O ALL24 · 288p</td><td class="mono">2.60e−4</td><td>oracle</td></tr>
+        <tr><td>L EVEN12 · 144p</td><td class="mono" style="color:var(--green)">5.03e−4</td><td>5 判据过 3；胜 N 5.3×</td></tr>
+        <tr><td>N LOW12 · 144p</td><td class="mono">2.67e−3</td><td>对照</td></tr>
+        <tr><td>随机 12 模态子集</td><td class="mono">8.13e−3</td><td>LLM 规则好 16.2×</td></tr>
+        <tr><td>A1 消融</td><td class="mono">2.28e−3</td><td>退化 4.5×</td></tr>
+      </table>
+      <div class="card rd" style="margin-top:12px">
+        <div class="ct">⚠️ 诚实边界（如实记录）</div>
+        <p style="font-size:13px">① LLM 自述的"偶宇称是机制"无因果支持 —— 混合宇称 R7 打平 5.20e−4；② 自设 falsifier Le&gt;5e−4 被 5.03e−4 擦边触发；③ P3a 失败：随机菜单抽到 oracle 本身 + 混合宇称打平；④ 规则菜单由人写、扩展事后冻结。</p>
+      </div>
+    </div>
+    <div class="pfig a2">
+      <img src="assets/act4_v6b.png" alt="V6B 表示层先验">
+      <div class="pcap"><span class="src">fig_v6b_prior</span> · 模态规则选择与 Le 分布</div>
+    </div>
+  </div>
+</section>
 <!-- ================= SLIDE 25 : MASTER TIMELINE ================= -->
 <section class="slide" id="s25">
   <div class="head">
@@ -1506,8 +1730,8 @@ svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif}
       <p style="font-size:14.5px">Agent 的胜因不是 LLM 更聪明，而是"提议/裁决权力分离 + 状态档案 + 预算硬约束"的组织方式 —— LLM 从"权威"降级为"假设生成器"。</p>
     </div>
     <div class="card rd a4">
-      <div class="num-big c4" style="font-size:22px">04 · 解释必须证伪</div>
-      <p style="font-size:14.5px">LLM 自我解释 ≠ 证据：2×2 消融推翻壁面因子归因，残差连接才是主效应（−0.154 vs −0.026）。每个叙事都要过消融/多种子/外推三关。</p>
+      <div class="num-big c4" style="font-size:22px">04 · 连尺子也要审计</div>
+      <p style="font-size:14px">LLM 解释 ≠ 证据（消融推翻归因）；指标 ≠ 物理（L_pde 可博弈 40×、rms_eval 反物理差 17–33×、L_pde 与振幅误差 ρ=−0.427）。预注册/诊断包/契约/不确定性四道防线，让"更好"可辩护。</p>
     </div>
   </div>
 </section>
@@ -1515,10 +1739,10 @@ svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif}
 <!-- ================= SLIDE 29 : END ================= -->
 <section class="slide divider" id="s29" style="align-items:center;justify-content:center;text-align:center">
   <div class="act" style="margin-left:auto;margin-right:auto">FIN / 结语</div>
-  <h1 style="font-size:44px;max-width:980px;line-height:1.5">湍流建模的未来，<br>不在于 LLM <span style="color:var(--cyan)">懂得物理</span>，<br>而在于我们建成<span style="color:var(--amber)">让它持续被证伪的机器</span></h1>
-  <div class="dsub" style="margin:34px auto 0;text-align:center">
+  <h1 style="font-size:42px;max-width:1000px;line-height:1.5">湍流建模的未来，<br>不在于 LLM <span style="color:var(--cyan)">懂得物理</span>，<br>而在于我们建成<span style="color:var(--amber)">让它持续被证伪的机器</span><br><span style="font-size:26px;color:var(--dim)">—— 包括证伪它用的那把尺子本身</span></h1>
+  <div class="dsub" style="margin:28px auto 0;text-align:center">
     Wei Zhang · Benlong Wang · Zheng Ma · Bing Zhu<br>
-    <span style="font-family:var(--mono);font-size:14px">LGF 战役 · LGF-Agent P1/P2 · Agent-PINN · 2026-10</span>
+    <span style="font-family:var(--mono);font-size:14px">LGF 战役 · LGF-Agent P1/P2 · Agent-PINN · 指标审计与自主重构 · 2026-10 → 11</span>
   </div>
 </section>
 
